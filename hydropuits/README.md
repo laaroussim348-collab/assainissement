@@ -1,6 +1,6 @@
 # HydroPuits — Favorabilité hydrogéologique pour l'implantation d'un forage
 
-> ⚠️ **README provisoire — étape 2 sur 9.** Le README complet (avec la
+> ⚠️ **README provisoire — étape 3 sur 9.** Le README complet (avec la
 > section « Limites connues », la description du moteur AHP, des sources de
 > données et de la procédure de build) est prévu à l'étape 9 du plan de
 > construction. Ce fichier ne décrit que l'état actuel.
@@ -27,7 +27,7 @@ expliquant le *pourquoi*), même habillage, même système de licence.
 |---|---|---|
 | 1 | Lecture du projet de référence + plan | ✅ |
 | 2 | Squelette : build, serveur, licence, i18n 4 langues, coquille UI | ✅ |
-| 3 | Carte + saisie du polygone (3 modes) + géométrie géodésique | à faire |
+| 3 | Carte + saisie du polygone (3 modes) + géométrie géodésique | ✅ (partiel) |
 | 4 | Registre des sources + téléchargement MNT + cache + clés | à faire |
 | 5 | Facteurs (pente, TWI, densités, courbure…) | à faire |
 | 6 | Moteur AHP + ratio de cohérence + reclassement | à faire |
@@ -35,8 +35,29 @@ expliquant le *pourquoi*), même habillage, même système de licence.
 | 8 | Analyse de sensibilité + rapport + export PNG | à faire |
 | 9 | README complet + build `npm run dist` | à faire |
 
-À l'étape 2, les 6 onglets existent et le projet `.hpu` se sauvegarde et
-s'ouvre, mais leur contenu métier n'est pas encore écrit.
+À l'étape 3, l'onglet **Terrain** est complet : les trois modes de saisie
+(tracé à la carte, import CSV, saisie au clavier) alimentent le même
+contour, la surface et le périmètre sont calculés sur l'ellipsoïde WGS84
+par la méthode géodésique de Karney, et le contour est validé
+(auto-intersections, doublons, dégénérescence, sens de parcours). Les cinq
+autres onglets attendent les étapes suivantes.
+
+### Ce qui manque à l'étape 3, et pourquoi
+
+Deux fonctions de l'onglet Terrain dépendent de fichiers de HydroCrue que le
+cahier des charges (§2.2 et §2.3) impose de **réutiliser sans les modifier**,
+et qui n'ont pas encore été fournis :
+
+| Fonction | Fichier attendu | État actuel |
+|---|---|---|
+| Systèmes Lambert Merchich, UTM, Point 58, Nord Sahara 59 | `calculations/coordonnees.js` | seul le WGS84 est proposé ; les autres sont visibles mais désactivés, avec la raison affichée |
+| Import de classeurs `.xlsx` | `services/miniXlsx.js` | l'import CSV fonctionne ; le `.xlsx` renvoie un message expliquant comment enregistrer en CSV |
+
+Les deux sont signalés **à l'écran**, jamais contournés par une valeur de
+repli (§5). Le reste du code est écrit pour que leur branchement soit une
+substitution locale : la colonne de conversion existe déjà dans le tableau
+de saisie, et toute l'analyse d'un fichier importé (nombres, en-tête,
+regroupement par terrain, lignes fautives) est commune au CSV et au `.xlsx`.
 
 ## Démarrage
 

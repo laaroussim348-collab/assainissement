@@ -9,7 +9,7 @@
 //  étant produite par un moteur AHP unique.
 // ============================================================
 import { useState, useCallback, useEffect } from 'react';
-import { t, langueActuelle, definirLangue, RTL, LANGUES, NOMS_LANGUES } from './i18n';
+import { t, tp, langueActuelle, definirLangue, RTL, LANGUES, NOMS_LANGUES } from './i18n';
 
 export function useI18n() {
   const [langue, setLangueState] = useState(langueActuelle());
@@ -29,6 +29,8 @@ export function useI18n() {
     changerLangue,
     rtl: !!RTL[langue],
     t,
+    // tp = t() avec interpolation de paramètres — voir i18n/index.js.
+    tp,
     LANGUES,
     NOMS_LANGUES,
   };

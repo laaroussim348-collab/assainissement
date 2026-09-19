@@ -26,6 +26,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useI18n } from "./useI18n";
 import LicenceGate from "./licence/LicenceGate";
 import Avertissement from "./Avertissement";
+import TerrainTab from "./tabs/TerrainTab";
 import {
   C_BLUE,
   TBtn, TSep, MItem, NoData,
@@ -186,6 +187,17 @@ function ApplicationPrincipale() {
   function getEtat() {
     return { ...etat };
   }
+
+  /**
+   * Fusionne une modification partielle dans l'état du projet. C'est le
+   * SEUL point d'entrée donné aux onglets : ils ne reçoivent jamais
+   * setEtat directement, ce qui garantit qu'aucun onglet ne peut écraser
+   * les champs d'un autre en remplaçant l'état entier (exigence §6 :
+   * « sans perte entre onglets »).
+   */
+  const majEtat = useCallback((partiel) => {
+    setEtat(precedent => ({ ...precedent, ...partiel }));
+  }, []);
 
   function chargerEtat(donnees) {
     // Ce changement d'état est d'origine interne (Nouveau / Ouvrir) : il ne
@@ -390,10 +402,16 @@ function ApplicationPrincipale() {
             lorsque le contenu arrivera. */}
         {ONGLETS_RESULTAT.includes(onglet) && <Avertissement />}
 
-        <NoData title={VIDES[onglet][0]} hint={VIDES[onglet][1]} />
-        <p style={{ textAlign: "center", fontSize: 11, color: "#aaa", marginTop: -30 }}>
-          {t('enChantier')}
-        </p>
+        {onglet === "terrain" ? (
+          <TerrainTab etat={etat} majEtat={majEtat} afficherToast={afficherToast} />
+        ) : (
+          <>
+            <NoData title={VIDES[onglet][0]} hint={VIDES[onglet][1]} />
+            <p style={{ textAlign: "center", fontSize: 11, color: "#aaa", marginTop: -30 }}>
+              {t('enChantier')}
+            </p>
+          </>
+        )}
       </div>
 
       {/* ── TOAST ── */}

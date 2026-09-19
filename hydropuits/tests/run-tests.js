@@ -20,6 +20,9 @@
  * -----------------------------------------------------------------------
  */
 import { casI18n } from './unit-i18n.test.js';
+import { casGeodesie } from './unit-geodesie.test.js';
+import { casPolygone } from './unit-polygone.test.js';
+import { casImportTerrain } from './unit-import-terrain.test.js';
 
 // Tolérance par défaut sur les comparaisons numériques, en pourcentage.
 // Valeur reprise d'HydroCrue (tests/run-tests.js) : couvre les écarts
@@ -30,6 +33,9 @@ const TOLERANCE_DEFAUT_POURCENT = 0.5;
 // ajoute la sienne ici.
 const SUITES = [
   ['i18n — dictionnaire 4 langues', casI18n],
+  ['Géodésie — ellipsoïde WGS84 (Karney)', casGeodesie],
+  ['Polygone — validation et normalisation', casPolygone],
+  ['Import — fichier de sommets', casImportTerrain],
 ];
 
 let total = 0;
