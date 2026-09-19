@@ -37,7 +37,7 @@ import { t } from './i18n';
 import { C_BLUE, C_TEAL, C_BORDER, C_RED, downloadChartCanvas } from './ui';
 import { airePerimetreGeodesiques } from './calculations/geodesie.js';
 import { exporterAvertissementTexte } from './Avertissement';
-import { ZOOM_MAX, creerCarte } from './carteBase.js';
+import { ZOOM_MAX, creerCarte, palierEchelle, creerCanvasExport } from './carteBase.js';
 
 // Couleurs du tracé. Reprises de la charte de HydroCrue (contour ambre sur
 // satellite : c'est la teinte qui reste lisible aussi bien sur un sol nu
@@ -71,12 +71,6 @@ function iconeNumero(numero, couleur = C_SOMMET, taille = 22) {
 
 
 /** Palier « rond » (mètres) juste inférieur ou égal à la distance mesurée — même logique que L.control.scale. */
-const PALIERS_ECHELLE_M = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000];
-function palierEchelle(m) {
-  const eligibles = PALIERS_ECHELLE_M.filter((p) => p <= m);
-  return eligibles.length ? eligibles[eligibles.length - 1] : PALIERS_ECHELLE_M[0];
-}
-
 // ── Grille de coordonnées (graticule) ──────────────────────────
 // Pas « rond » (degrés), même logique que palierEchelle mais visant ~5
 // lignes sur l'étendue visible. Les paliers descendent plus bas que dans
@@ -281,23 +275,7 @@ function dessinerCartouche(ctx, map, rect, { titre, mesures, nbSommets }) {
  * explicite.
  */
 function exporterCarteEnImage(map, container, { sommets, titre, grille, mesures }) {
-  const rect = container.getBoundingClientRect();
-  // Résolution d'export : au moins 2x (indépendamment du devicePixelRatio de
-  // l'écran), pour une image nette à l'impression et dans le rapport.
-  const ratio = Math.max(window.devicePixelRatio || 1, 2);
-  const canvas = document.createElement('canvas');
-  canvas.width = rect.width * ratio;
-  canvas.height = rect.height * ratio;
-  const ctx = canvas.getContext('2d');
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.scale(ratio, ratio);
-
-  const tuiles = container.querySelectorAll('.leaflet-tile-pane img.leaflet-tile-loaded');
-  tuiles.forEach((img) => {
-    const r = img.getBoundingClientRect();
-    try { ctx.drawImage(img, r.left - rect.left, r.top - rect.top, r.width, r.height); } catch { /* tuile isolée illisible : ignorée */ }
-  });
+  const { canvas, ctx, rect } = creerCanvasExport(container);
 
   const versPoint = (s) => map.latLngToContainerPoint([s.lat, s.lon]);
 

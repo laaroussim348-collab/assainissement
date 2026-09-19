@@ -39,6 +39,7 @@ import { casAhp } from './unit-ahp.test.js';
 import { casReclassement } from './unit-reclassement.test.js';
 import { casFacteurs } from './unit-facteurs.test.js';
 import { casFavorabilite } from './unit-favorabilite.test.js';
+import { casSensibilite } from './unit-sensibilite.test.js';
 
 // Tolérance par défaut sur les comparaisons numériques, en pourcentage.
 // Valeur reprise d'HydroCrue (tests/run-tests.js) : couvre les écarts
@@ -68,6 +69,7 @@ const SUITES = [
   ['Reclassement — seuils, bornes, quantiles', casReclassement],
   ['Facteurs — assemblage des 8 facteurs depuis les sources', casFacteurs],
   ['Favorabilité — combinaison pondérée et classement des points', casFavorabilite],
+  ['Sensibilité — perturbation ±20% des poids AHP', casSensibilite],
 ];
 
 let total = 0;

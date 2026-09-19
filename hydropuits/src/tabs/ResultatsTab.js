@@ -12,6 +12,13 @@
 //  (CR ≥ 0,10) ou si un facteur actif n'a pas de seuil calculable — les
 //  deux cas renvoient un message explicite plutôt qu'un résultat qui
 //  aurait l'air valide (§5).
+//
+//  Le résultat calculé est REMONTÉ à App.js (resultatCalcul/
+//  setResultatCalcul) : Sensibilité et Rapport le réutilisent tel quel,
+//  plutôt que de relancer chacun leur propre pipeline — un seul calcul,
+//  jamais trois qui pourraient en venir à se contredire. App.js
+//  l'invalide automatiquement dès que le terrain ou les critères
+//  changent (§5 : jamais un résultat obsolète affiché comme à jour).
 // ============================================================
 import { useState } from 'react';
 import { useI18n } from '../useI18n';
@@ -32,9 +39,8 @@ import { C_BLUE, C_AMBER, Panel, Alert, NoData } from '../ui';
  */
 const NOMBRE_MEILLEURS_POINTS_DEFAUT = 10;
 
-export default function ResultatsTab({ etat }) {
+export default function ResultatsTab({ etat, resultatCalcul, setResultatCalcul }) {
   const { t, tp } = useI18n();
-  const [resultat, setResultat] = useState(null);
   const [chargement, setChargement] = useState(false);
   const [erreur, setErreur] = useState(null);
 
@@ -51,7 +57,7 @@ export default function ResultatsTab({ etat }) {
   function lancerCalcul() {
     setChargement(true);
     setErreur(null);
-    setResultat(null);
+    setResultatCalcul(null);
     executerPipelineFacteurs(validation.sommets, {
       rayonDensite_m: etat.facteurs?.rayonDensite_m || RAYON_DENSITE_M_DEFAUT,
     }).then((construction) => {
@@ -83,10 +89,15 @@ export default function ResultatsTab({ etat }) {
       const { grillesClasses } = reclasserTousLesFacteurs(grillesBrutesActives, construction.grille.masque, seuilsParFacteur, sensParFacteur);
       const { score, nManquantes } = combinerFavorabilite(grillesClasses, poidsActuels, construction.grille.masque);
       const meilleursPoints = classerMeilleursPoints(construction.grille, score, NOMBRE_MEILLEURS_POINTS_DEFAUT);
-      setResultat({ grille: construction.grille, score, nManquantes, meilleursPoints, avertissements: construction.avertissements });
+      setResultatCalcul({
+        grille: construction.grille, grillesClasses, poids: poidsActuels, score, nManquantes, meilleursPoints,
+        avertissements: construction.avertissements,
+      });
       setChargement(false);
     }).catch((e) => { setErreur(e.message); setChargement(false); });
   }
+
+  const titreCarte = etat.nomTerrain || t('mSansTitre');
 
   return (
     <div>
@@ -101,26 +112,27 @@ export default function ResultatsTab({ etat }) {
       {!poids && <Alert tone="error">{t('resultatsErreurCoherence')}</Alert>}
       {erreur && <Alert tone="error">{erreur}</Alert>}
 
-      {resultat && (
+      {resultatCalcul && (
         <>
-          {resultat.avertissements.length > 0 && (
+          {resultatCalcul.avertissements.length > 0 && (
             <Panel title={t('resultatsAvertissementsTitre')} icon="alert-triangle" accent={C_AMBER}>
-              {resultat.avertissements.map((a, i) => <Alert key={i} tone="warn">{tp(a.cle, a.params || {})}</Alert>)}
+              {resultatCalcul.avertissements.map((a, i) => <Alert key={i} tone="warn">{tp(a.cle, a.params || {})}</Alert>)}
             </Panel>
           )}
 
-          {resultat.nManquantes > 0 && (
+          {resultatCalcul.nManquantes > 0 && (
             <Alert tone="warn">
-              {tp('resultatsSansResultatCellules', { n: resultat.nManquantes, total: resultat.grille.nbLignes * resultat.grille.nbColonnes })}
+              {tp('resultatsSansResultatCellules', { n: resultatCalcul.nManquantes, total: resultatCalcul.grille.nbLignes * resultatCalcul.grille.nbColonnes })}
             </Alert>
           )}
 
-          {resultat.meilleursPoints.length === 0 ? (
+          {resultatCalcul.meilleursPoints.length === 0 ? (
             <Alert tone="error">{t('resultatsAucuneCelluleValide')}</Alert>
           ) : (
             <>
               <Panel title={t('resultatsLegendeTitre')} icon="map" accent={C_BLUE} noPad>
-                <CarteFavorabilite grille={resultat.grille} score={resultat.score} meilleursPoints={resultat.meilleursPoints} />
+                <CarteFavorabilite grille={resultatCalcul.grille} score={resultatCalcul.score}
+                  meilleursPoints={resultatCalcul.meilleursPoints} titre={titreCarte} />
               </Panel>
 
               <Panel title={t('resultatsMeilleursPointsTitre')} icon="list-numbers" accent={C_BLUE}>
@@ -133,7 +145,7 @@ export default function ResultatsTab({ etat }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {resultat.meilleursPoints.map((p) => (
+                    {resultatCalcul.meilleursPoints.map((p) => (
                       <tr key={p.rang} style={{ borderBottom: '1px solid #eee' }}>
                         <td style={{ padding: '4px 6px' }}>{p.rang}</td>
                         <td style={{ padding: '4px 6px' }}>{p.score.toFixed(2)}</td>

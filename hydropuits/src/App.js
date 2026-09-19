@@ -28,6 +28,8 @@ import TerrainTab from "./tabs/TerrainTab";
 import DonneesTab from "./tabs/DonneesTab";
 import CriteresTab from "./tabs/CriteresTab";
 import ResultatsTab from "./tabs/ResultatsTab";
+import SensibiliteTab from "./tabs/SensibiliteTab";
+import RapportTab from "./tabs/RapportTab";
 import {
   C_BLUE,
   TBtn, TSep, MItem, NoData,
@@ -153,6 +155,24 @@ function ApplicationPrincipale() {
   const [menuFichier, setMenuFichier] = useState(false);
   const [menuEdition, setMenuEdition] = useState(false);
   const [toast, setToast] = useState(null);
+
+  // Dernier résultat de favorabilité calculé (étape 7) : PAS dans `etat`
+  // (donc pas dans le .hpu) — c'est une donnée DÉRIVÉE, entièrement
+  // recalculable depuis le terrain + les critères, pas une saisie de
+  // l'utilisateur. Résultats, Sensibilité et Rapport (§6) le PARTAGENT :
+  // un seul calcul, jamais trois pipelines indépendants qui pourraient
+  // en venir à afficher des choses différentes. Invalidé automatiquement
+  // dès que le terrain ou les critères changent (ci-dessous) — jamais un
+  // résultat obsolète affiché comme s'il était à jour (§5).
+  const [resultatCalcul, setResultatCalcul] = useState(null);
+  const cleEntreesCalcul = JSON.stringify({ sommets: etat.sommets, facteurs: etat.facteurs, matriceAhp: etat.matriceAhp });
+  const cleEntreesCalculRef = useRef(cleEntreesCalcul);
+  useEffect(() => {
+    if (cleEntreesCalculRef.current !== cleEntreesCalcul) {
+      cleEntreesCalculRef.current = cleEntreesCalcul;
+      setResultatCalcul(null);
+    }
+  }, [cleEntreesCalcul]);
 
   const afficherToast = useCallback(msg => {
     setToast(msg);
@@ -406,8 +426,13 @@ function ApplicationPrincipale() {
         {onglet === "terrain" && <TerrainTab etat={etat} majEtat={majEtat} afficherToast={afficherToast} />}
         {onglet === "donnees" && <DonneesTab etat={etat} majEtat={majEtat} afficherToast={afficherToast} />}
         {onglet === "criteres" && <CriteresTab etat={etat} majEtat={majEtat} afficherToast={afficherToast} />}
-        {onglet === "resultats" && <ResultatsTab etat={etat} majEtat={majEtat} afficherToast={afficherToast} />}
-        {!["terrain", "donnees", "criteres", "resultats"].includes(onglet) && (
+        {onglet === "resultats" && (
+          <ResultatsTab etat={etat} majEtat={majEtat} afficherToast={afficherToast}
+            resultatCalcul={resultatCalcul} setResultatCalcul={setResultatCalcul} />
+        )}
+        {onglet === "sensibilite" && <SensibiliteTab etat={etat} resultatCalcul={resultatCalcul} />}
+        {onglet === "rapport" && <RapportTab etat={etat} majEtat={majEtat} resultatCalcul={resultatCalcul} />}
+        {!["terrain", "donnees", "criteres", "resultats", "sensibilite", "rapport"].includes(onglet) && (
           <>
             <NoData title={VIDES[onglet][0]} hint={VIDES[onglet][1]} />
             <p style={{ textAlign: "center", fontSize: 11, color: "#aaa", marginTop: -30 }}>

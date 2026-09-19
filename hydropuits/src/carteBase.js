@@ -75,6 +75,49 @@ export function ajouterFond(map) {
   return fond;
 }
 
+/** Palier « rond » (mètres) juste inférieur ou égal à la distance mesurée
+ *  — pour une échelle graphique lisible (100 m plutôt que 97,3 m). Même
+ *  logique que L.control.scale. PARTAGÉ entre toutes les cartographies
+ *  exportées en PNG (Terrain, Favorabilité) pour ne jamais avoir deux
+ *  règles d'arrondi différentes selon l'écran. */
+export const PALIERS_ECHELLE_M = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000];
+export function palierEchelle(m) {
+  const eligibles = PALIERS_ECHELLE_M.filter((p) => p <= m);
+  return eligibles.length ? eligibles[eligibles.length - 1] : PALIERS_ECHELLE_M[0];
+}
+
+/**
+ * Rasterise les tuiles Leaflet CHARGÉES d'un conteneur de carte sur un
+ * nouveau canevas, à la résolution d'export (≥2×, indépendamment du
+ * devicePixelRatio de l'écran — pour une image nette à l'impression et
+ * dans le rapport). PARTAGÉ entre CarteTerrain.js et CarteFavorabilite.js
+ * : chacune dessine ensuite SES PROPRES calques vectoriels (contour,
+ * grille colorée, cartouche) par-dessus ce même socle.
+ *
+ * Fonctionne uniquement si les tuiles ont été chargées en CORS (voir
+ * ajouterFond) — sinon le canevas est « taché » et toDataURL() lève une
+ * exception, à intercepter par l'appelant avec un message explicite.
+ */
+export function creerCanvasExport(container) {
+  const rect = container.getBoundingClientRect();
+  const ratio = Math.max(window.devicePixelRatio || 1, 2);
+  const canvas = document.createElement('canvas');
+  canvas.width = rect.width * ratio;
+  canvas.height = rect.height * ratio;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.scale(ratio, ratio);
+
+  const tuiles = container.querySelectorAll('.leaflet-tile-pane img.leaflet-tile-loaded');
+  tuiles.forEach((img) => {
+    const r = img.getBoundingClientRect();
+    try { ctx.drawImage(img, r.left - rect.left, r.top - rect.top, r.width, r.height); } catch { /* tuile isolée illisible : ignorée */ }
+  });
+
+  return { canvas, ctx, rect };
+}
+
 export function creerCarte(container, { interactive }) {
   const map = L.map(container, {
     center: [31.792, -7.083], // centre approx. du Maroc, par défaut

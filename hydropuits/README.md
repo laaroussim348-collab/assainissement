@@ -32,7 +32,7 @@ expliquant le *pourquoi*), même habillage, même système de licence.
 | 5 | Facteurs (pente, TWI, densités, courbure…) | ✅ |
 | 6 | Moteur AHP + ratio de cohérence + reclassement | ✅ |
 | 7 | Carte de favorabilité + classement des emplacements | ✅ |
-| 8 | Analyse de sensibilité + rapport + export PNG | à faire |
+| 8 | Analyse de sensibilité + rapport + export PNG | ✅ |
 | 9 | README complet + build `npm run dist` | à faire |
 
 À l'étape 3, l'onglet **Terrain** est complet : les trois modes de saisie
@@ -408,6 +408,60 @@ moyenne recalculée en silence sur les facteurs restants — la pondération
 AHP a été choisie par l'utilisateur pour un ensemble précis de facteurs ;
 recalculer localement reviendrait à lui faire dire autre chose que ce
 qu'il a validé, sans le prévenir.
+
+## Étape 8 — analyse de sensibilité, rapport, export PNG
+
+Un nouveau module de calcul pur, deux nouveaux onglets, et un partage
+d'état entre onglets :
+
+| Fichier | Contenu |
+|---|---|
+| `calculations/sensibilite.js` | Perturbe le poids de chaque facteur actif de ±20 % (redistribution proportionnelle des autres, méthode de Triantaphyllou & Sanchez 1997), mesure l'écart moyen du score et si le meilleur point change |
+| `tabs/SensibiliteTab.js` | Graphique (recharts, tornado) + tableau détaillé, triés par influence décroissante |
+| `tabs/RapportTab.js` | Synthèse imprimable : résumé, carte exportable en PNG, poids, meilleurs points, observations libres de l'ingénieur |
+| `carteBase.js` (complété) | `creerCanvasExport()` et `palierEchelle()` extraits de `CarteTerrain.js` pour être PARTAGÉS par `CarteFavorabilite.js` — même logique de compositing de tuiles, jamais deux copies |
+
+### Un seul calcul, partagé par Résultats, Sensibilité et Rapport
+
+`App.js` porte désormais `resultatCalcul` (grille, classes reclassées,
+poids, score, meilleurs points) — une donnée DÉRIVÉE, PAS dans `etat`
+(donc pas dans le `.hpu` : entièrement recalculable). Résultats le
+calcule et le publie ; Sensibilité et Rapport le RÉUTILISENT tel quel,
+au lieu de relancer chacun leur propre pipeline, pour qu'il ne puisse
+jamais exister trois résultats légèrement différents pour le même
+terrain. Il est **invalidé automatiquement** dès que le terrain ou les
+critères (facteurs actifs, seuils, matrice AHP) changent — Sensibilité
+et Rapport redeviennent alors des états vides explicites tant que
+l'utilisateur n'a pas relancé le calcul, jamais un résultat obsolète
+affiché comme à jour (§5). Vérifié par Playwright : modifier un sommet
+du terrain après un calcul fait bien disparaître le rapport.
+
+### Méthode de sensibilité : « one-at-a-time » avec redistribution proportionnelle
+
+Pour chaque facteur actif, son poids est multiplié par 1,2 puis 0,8 (±20 %,
+imposé par le cahier des charges), et **tous les autres facteurs actifs
+sont redistribués proportionnellement entre eux** pour que la somme
+reste 1 — c'est la méthode usuelle d'analyse de sensibilité en AHP
+(Triantaphyllou & Sanchez, 1997). Propriété vérifiée par test : le
+RAPPORT entre deux facteurs non perturbés reste rigoureusement inchangé
+après redistribution (ce n'est pas une coïncidence numérique, c'est la
+définition même d'une redistribution proportionnelle).
+
+Ce qui est mesuré et affiché pour chaque facteur : l'écart moyen absolu
+du score sur les cellules valides (impact global sur la carte), et si le
+MEILLEUR point change (impact sur la décision elle-même — l'indicateur
+le plus concret). Avec un seul facteur actif, l'analyse le dit
+explicitement (`insuffisant: true`) plutôt que d'afficher un tableau vide
+sans explication.
+
+### Export PNG : cartouche avec avertissement scientifique baké dans l'image
+
+`CarteFavorabilite.js` exporte la carte de favorabilité en PNG avec la
+même cartouche professionnelle que la carte du terrain (titre, échelle
+graphique, légende) — et, comme pour elle, **l'avertissement
+scientifique du §5 est dessiné directement sur l'image**, pas seulement
+affiché à l'écran : une image exportée circule seule (message, e-mail),
+détachée de l'application qui la nuance habituellement.
 
 ## Notes d'architecture
 
