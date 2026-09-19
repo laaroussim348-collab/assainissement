@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#185FA5" />
+    <meta name="description" content="HydroPuits — Favorabilité hydrogéologique d'un terrain pour l'implantation d'un forage d'eau : analyse multicritère AHP sur données satellitaires." />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+
+    <!--
+      Tabler Icons (icônes `ti ti-*` utilisées dans App.js et ui.js) —
+      SERVIES LOCALEMENT, pas depuis un CDN comme dans HydroCrue.
+      Pourquoi : le logiciel est distribué en poste isolé, souvent sans
+      Internet ; avec un CDN, toute l'interface perd ses icônes hors ligne
+      (HydroCrue le reconnaît dans son README, section « Limites connues »).
+      Les fichiers sont vendorisés dans public/vendor/tabler-icons/ :
+      ce n'est PAS une dépendance npm (rien n'est ajouté au package.json),
+      juste deux fichiers statiques copiés depuis le paquet officiel
+      @tabler/icons-webfont 3.47.0, licence MIT (voir le LICENSE à côté).
+      Le @font-face a été réduit au seul .woff2 — le .woff et le .ttf
+      d'origine ne sont pas copiés (Chromium/Electron lit le woff2), leurs
+      références produiraient sinon deux 404 à chaque démarrage.
+    -->
+    <link rel="stylesheet" href="%PUBLIC_URL%/vendor/tabler-icons/tabler-icons.min.css" />
+
+    <title>HydroPuits — Favorabilité hydrogéologique</title>
+  </head>
+  <body>
+    <noscript>Activez JavaScript pour utiliser cette application.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

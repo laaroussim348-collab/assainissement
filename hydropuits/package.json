@@ -1,0 +1,84 @@
+{
+  "name": "hydropuits",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HydroPuits — Favorabilité hydrogéologique d'un terrain pour l'implantation d'un forage d'eau : analyse multicritère AHP (Saaty) sur données satellitaires, avec carte de favorabilité maillée et analyse de sensibilité.",
+  "homepage": "./",
+  "main": "electron-main.mjs",
+  "dependencies": {
+    "leaflet": "^1.9.4",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-scripts": "5.0.1",
+    "recharts": "^3.8.1",
+    "web-vitals": "^2.1.4"
+  },
+  "scripts": {
+    "start": "cross-env DISABLE_ESLINT_PLUGIN=true react-scripts start",
+    "build": "cross-env DISABLE_ESLINT_PLUGIN=true react-scripts build",
+    "test": "node tests/run-tests.js",
+    "server": "node server.mjs",
+    "serve": "npm run build && node server.mjs",
+    "electron": "electron .",
+    "electron-dev": "concurrently \"cross-env BROWSER=none npm start\" \"wait-on http://localhost:3000 && electron .\"",
+    "dist": "npm run build && electron-builder --win"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3",
+    "wait-on": "^9.0.10"
+  },
+  "build": {
+    "extends": null,
+    "appId": "com.hydropuits.app",
+    "productName": "HydroPuits",
+    "files": [
+      "electron-main.mjs",
+      "server.mjs",
+      "package.json",
+      "build/**/*",
+      "src/calculations/**/*",
+      "src/data/**/*",
+      "src/services/**/*",
+      "license-config.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build-resources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "HydroPuits"
+    },
+    "directories": {
+      "output": "dist"
+    }
+  }
+}
