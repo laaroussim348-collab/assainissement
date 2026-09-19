@@ -1,9 +1,5 @@
 # HydroPuits — Favorabilité hydrogéologique pour l'implantation d'un forage
 
-> ⚠️ **README provisoire — étape 5 sur 9.** Le README complet (avec la
-> section « Limites connues », la description du moteur AHP, des sources de
-> données et de la procédure de build) est prévu à l'étape 9 du plan de
-> construction. Ce fichier ne décrit que l'état actuel.
 
 HydroPuits évalue la **favorabilité hydrogéologique relative** d'un terrain
 pour l'implantation d'un forage d'eau, par analyse multicritère (AHP de
@@ -33,7 +29,7 @@ expliquant le *pourquoi*), même habillage, même système de licence.
 | 6 | Moteur AHP + ratio de cohérence + reclassement | ✅ |
 | 7 | Carte de favorabilité + classement des emplacements | ✅ |
 | 8 | Analyse de sensibilité + rapport + export PNG | ✅ |
-| 9 | README complet + build `npm run dist` | à faire |
+| 9 | README complet + build `npm run dist` | ✅ (voir « Limites connues » — le stub NSIS final requiert Wine, absent de cet environnement) |
 
 À l'étape 3, l'onglet **Terrain** est complet : les trois modes de saisie
 (tracé à la carte, import CSV, saisie au clavier) alimentent le même
@@ -84,6 +80,37 @@ npm start          # http://localhost:3000
 
 > Les routes `/api/*` (licence, presse-papiers) ne sont disponibles qu'avec
 > `npm run server` / `npm run electron` — `npm start` ne sert que l'UI React.
+
+## Build de distribution
+
+```bash
+npm run dist   # = npm run build && electron-builder --win (installeur NSIS)
+```
+
+**Vérifié à l'étape 9**, dans cet environnement de développement (Linux,
+sans accès réseau général — voir « Limites connues ») :
+
+1. `npm run build` (compilation React) : ✅ réussi.
+2. Téléchargement du binaire Electron 43 et empaquetage de l'application
+   (`dist/win-unpacked/`) : ✅ réussi.
+3. Construction de l'archive 7z du paquet NSIS (~127 Mo) : ✅ réussie.
+4. **Compilation du stub d'installeur NSIS final (le `.exe`
+   auto-extractible)** : ❌ échoue avec `spawn wine ENOENT` — pour
+   construire un installeur **Windows** depuis un poste **Linux**,
+   `electron-builder` doit exécuter `makensis.exe` via **Wine**, qui
+   n'est pas installé dans cet environnement de développement (ce n'est
+   pas un défaut du projet : c'est une dépendance système documentée
+   d'electron-builder pour la compilation croisée). Un fichier
+   `HydroPuits Setup 0.1.0.exe` de 282 Ko apparaît dans `dist/` à ce
+   stade : ce n'est PAS un installeur valide, seulement le gabarit NSIS
+   avant l'insertion du payload par Wine — ne pas le distribuer tel quel.
+
+**Pour produire l'installeur final**, deux options équivalentes,
+aucune ne demandant de changement de code :
+- lancer `npm run dist` sur (ou depuis) une machine Windows, où
+  `electron-builder` invoque directement `makensis.exe` sans Wine ;
+- installer Wine sur un poste Linux/CI (`apt install wine`) puis relancer
+  `npm run dist` sans autre modification.
 
 ## Tests
 
@@ -477,3 +504,181 @@ détachée de l'application qui la nuance habituellement.
   `react-dom`, `react-scripts`, `recharts`, `web-vitals`. Tout le reste
   s'écrit à la main : chaque dépendance est un risque d'installation sur un
   poste hors ligne.
+
+## Limites connues
+
+Cette section rassemble, en un seul endroit, tous les écarts et
+simplifications assumés au fil des 9 étapes — chacun est déjà documenté
+en détail dans le code et la section d'étape correspondante ; ce qui
+suit n'en est que l'index, pour qu'aucun ne reste enterré dans un
+commentaire qu'on ne pense pas à relire.
+
+### 1. Cinq fichiers HydroCrue jamais fournis
+
+Le cahier des charges (§2.2, §2.3) imposait de RÉUTILISER, sans les
+modifier, cinq fichiers de HydroCrue. Ils ont été demandés à l'étape 1,
+puis re-demandés aux étapes 3, 4 et 5 (systématiquement vérifiés absents
+via `git ls-tree` sur le dépôt de référence à chaque fois) — sans
+réponse. Conséquences précises, chacune affichée à l'écran plutôt que
+contournée en silence (§5) :
+
+| Fichier attendu | Ce qu'il aurait apporté | Ce qui existe à la place |
+|---|---|---|
+| `calculations/coordonnees.js` | Systèmes Lambert Merchich, UTM, Point 58, Nord Sahara 59 | Seul le WGS84 degrés décimaux est opérationnel ; les autres systèmes sont visibles dans le sélecteur mais désactivés, avec la raison affichée (`TerrainTab.js`) |
+| `services/miniXlsx.js` | Import de classeurs `.xlsx` | Seul le CSV fonctionne ; `.xlsx` renvoie un message expliquant comment enregistrer en CSV (`importTerrain.js`, `lireXlsx()`) |
+| `services/importPoints.js` | Logique d'import Excel déjà écrite dans HydroCrue | Réimplémentée pour le CSV dans `importTerrain.js` |
+| `calculations/DelimitationCarteMulti.js` | Carte de saisie multi-polygone de référence | `CarteTerrain.js` réécrit pour HydroPuits (polygone unique éditable), sans base à comparer au pixel près |
+| `unit-coordonnees.test.js` | Suite de tests de référence pour les conversions de coordonnées | Sans objet tant que `coordonnees.js` n'existe pas |
+
+Conséquence la plus visible pour l'utilisateur : un terrain doit être
+saisi en WGS84 (latitude/longitude), pas en coordonnées Lambert ou UTM
+locales — ni en `.xlsx` sans passer par une conversion CSV manuelle au
+préalable.
+
+### 2. Pas de vraie projection UTM — plan tangent local à la place
+
+`calculations/grilleLocale.js` n'implémente pas une vraie projection UTM
+(série de Krüger à l'ordre n⁶) : `WebFetch` s'est révélé bloqué, dans
+cet environnement de développement, sur toutes les sources de référence
+tentées (Wikipedia, movable-type.co.uk, neacsu.net), et recopier une
+formule de mémoire sans pouvoir la vérifier est exactement ce que le
+cahier des charges interdit (§8). À la place : un plan tangent local au
+centroïde du terrain, mis à l'échelle par différences finies
+**géodésiques exactes** (le moteur de Karney déjà validé, §4 ci-dessus),
+avec une distorsion **mesurée** (pas supposée) — de l'ordre de 10⁻⁵ à
+l'échelle d'une parcelle, très en dessous du seuil d'alerte de 0,1 %
+(voir `tests/unit-grille-locale.test.js`). À remplacer par le
+`utm-wgs84` de `coordonnees.js` dès qu'il sera fourni — les fonctions
+`versLocal`/`versGeographique` ont volontairement les mêmes signatures.
+
+### 3. Réseau sortant bloqué dans cet environnement de développement
+
+Aucun des 5 clients réseau (`elevationClient.js`, `overpassClient.js`,
+`nasaPowerClient.js`, `soilGridsClient.js`, `openTopographyClient.js`)
+n'a pu être exercé contre son vrai serveur distant pendant cette
+session : le bac à sable de développement bloque toute connexion
+sortante hors d'une liste précise (registre npm, dépôts de paquets),
+confirmée en observant les rejets de connexion du proxy sortant. Ce
+n'est pas propre à ce projet — HydroCrue portait déjà la même réserve
+sur son client NASA POWER.
+
+Conséquence et mitigation :
+- Construction d'URL et analyse de réponse sont testées sur des
+  réponses **synthétiques reproduisant exactement le format documenté**
+  de chaque API (voir chaque `tests/unit-*-client.test.js`), jamais
+  contre le vrai serveur.
+- Le pipeline COMPLET (téléchargement → grille → dérivées → hydrologie
+  → géométrie linéaire → reclassement → AHP → carte) a néanmoins été
+  vérifié de bout en bout de façon réaliste : en préremplissant le cache
+  disque du serveur (`cacheDonnees.js`) avec des données synthétiques
+  MAIS conformes au format réel, exactement comme le ferait un vrai
+  téléchargement réussi, puis en pilotant l'application avec Playwright.
+  Voir les étapes 7 et 8 ci-dessus pour le détail de ce qui a été
+  observé (seuils calculés, CR, carte, classement, sensibilité, rapport
+  — tous corrects sur ce jeu de données).
+- **À revérifier avant mise en production** sur un poste avec un accès
+  réseau normal : la forme exacte des réponses JSON réelles n'a jamais
+  été vue par ce code, seulement leur documentation.
+
+### 4. Lithologie/sol : simplification assumée, source en pause
+
+`facteurs.js` utilise le **pourcentage de sable** (SoilGrids, 0-30 cm)
+comme proxy de favorabilité lithologique — un sol sableux est plus
+perméable qu'un sol argileux, principe de base de la physique des sols,
+mais ce n'est PAS une vraie lithologie (nature de la roche, profondeur
+au substratum). De plus, l'API ISRIC SoilGrids était **en pause**
+(« temporarily paused ») au 19/09/2026 — la source reste marquée
+`indisponibleTemporairement` dans `sourcesDonnees.js`, et le facteur
+Lithologie/sol est **désactivé par défaut** dans l'onglet Critères tant
+qu'elle ne l'est pas.
+
+### 5. Lithologie et pluviométrie : valeurs ponctuelles, pas de vraies grilles
+
+SoilGrids (≈ 250 m) et NASA POWER (≈ 50-60 km, grille de réanalyse
+MERRA-2) sont interrogés en UN SEUL point (le centre approché du
+terrain) : leur résolution native est bien plus grossière que la
+parcelle visée par ce logiciel, donc interpoler une grille à partir d'un
+point unique serait une fausse précision. La valeur est appliquée
+UNIFORMÉMENT sur tout le terrain — dit explicitement (avertissement à
+l'écran), jamais présenté comme une variation spatiale mesurée.
+
+### 6. Pas de détection automatique de linéaments sur MNT
+
+§3.4 mentionne « densité de linéaments : OSM + détection sur MNT ».
+Seule la première moitié est câblée : le tag OpenStreetMap
+`geological=fault` (via Overpass). Aucun algorithme de détection
+automatique de linéaments sur MNT (filtrage directionnel, détection de
+ruptures de pente alignées, etc.) n'a été implémenté — la couverture de
+ce tag dans OSM est elle-même très inégale, ce que `overpassClient.js`
+signale explicitement (`srcAvtAucuneFailleOsm`) plutôt que de laisser
+croire à un socle homogène en son absence.
+
+### 7. Matrice AHP par défaut : un ordre défendable, pas une matrice publiée
+
+Aucune publication ne fournit une matrice de comparaisons 8×8 pour
+exactement les 8 facteurs de ce logiciel — les études AHP publiées sur
+le potentiel en eaux souterraines portent sur des jeux de facteurs
+voisins mais différents, et ne s'accordent PAS entre elles sur des poids
+numériques (deux exemples opposés trouvés et cités dans `ahp.js` et
+l'étape 6 ci-dessus). `MATRICE_DEFAUT_AHP` encode donc un ORDRE de
+grandeur défendable pour un contexte de socle fracturé, construit pour
+être cohérent (CR=0,079, calculé et vérifié par test) et **entièrement
+modifiable** dans l'onglet Critères — jamais présentée comme LA matrice
+de référence de la littérature.
+
+### 8. Seuils de reclassement par défaut : calculés sur les données, pas universels
+
+Sauf pour la pente (classes FAO, seuil absolu défendable), les 7 autres
+facteurs n'ont pas de seuil universel citable — le TWI, en particulier,
+dépend directement de la résolution de grille. Les seuils par défaut
+sont donc calculés par QUANTILES sur les données réelles du terrain
+analysé (`reclassement.seuilsQuantiles()`), pas des nombres absolus
+inventés, et restent modifiables dans l'onglet Critères.
+
+### 9. D8 plutôt que D-infini pour le TWI et l'aire drainée
+
+Choix explicite (§4 : « dis lequel ») documenté dans
+`hydrologieGrille.js` : D8 (O'Callaghan & Mark, 1984) plutôt que D∞
+(Tarboton, 1997). D8 est connu pour introduire un biais directionnel sur
+de grands bassins versants allongés — jugé non significatif à l'échelle
+d'une parcelle de quelques hectares, l'échelle visée par ce logiciel, et
+plus simple à valider analytiquement sur un MNT synthétique.
+
+### 10. Résolution du MNT (~90 m) : limite de discrimination sur petit terrain
+
+Un terrain plus petit qu'une maille du MNT (< 8 100 m², `polygone.js`,
+`AIRE_MINIMALE_ANALYSABLE_M2`) tiendrait dans un seul pixel altimétrique
+: les facteurs dérivés du relief y seraient constants, donc sans pouvoir
+discriminant. Ce n'est pas un refus, seulement un avertissement affiché
+— la précision du résultat reste bornée par la résolution de la donnée
+d'entrée, jamais supérieure à elle.
+
+### 11. Aucune automatisation de compte ou d'inscription (règle absolue respectée)
+
+Conformément à §3.3, le logiciel ne crée et ne remplit jamais un compte,
+ne se connecte jamais à un compte Google/Gmail, et n'automatise aucune
+inscription — rappelé en permanence à l'écran dans l'onglet Données. Les
+2 sources à clé (OpenTopography, et SoilGrids si elle demandait une
+clé) restent désactivées tant que l'utilisateur n'a pas obtenu et collé
+lui-même sa propre clé.
+
+### 12. Pas d'export PDF direct
+
+Le rapport s'exporte en deux morceaux, pas un seul fichier PDF composé :
+la carte de favorabilité en PNG (cartouche avec avertissement baké dans
+l'image, `CarteFavorabilite.js`), et le reste de l'onglet Rapport via le
+bouton **Imprimer** déjà présent dans la barre d'outils
+(`window.print()`, qui laisse le choix « Enregistrer en PDF » au
+navigateur/à l'OS) — pas de générateur PDF maison qui aurait ajouté une
+dépendance ou une bibliothèque de mise en page à écrire à la main.
+
+### 13. Build Electron (`npm run dist`)
+
+Voir la section [Build de distribution](#build-de-distribution)
+ci-dessus pour le résultat exact obtenu dans cet environnement de
+développement (Linux, sans accès réseau général) : la compilation React
+et l'empaquetage Electron réussissent, seule la compilation finale du
+stub NSIS échoue faute de Wine (dépendance système d'electron-builder
+pour la compilation croisée Linux→Windows, pas un défaut du projet) —
+et ce qu'il reste à vérifier sur un poste Windows avant une première
+distribution.
