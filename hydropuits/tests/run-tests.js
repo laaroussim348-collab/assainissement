@@ -30,6 +30,11 @@ import { casSoilGridsClient } from './unit-soil-grids-client.test.js';
 import { casOpenTopographyClient } from './unit-open-topography-client.test.js';
 import { casSourcesDonnees } from './unit-sources-donnees.test.js';
 import { casCacheDonnees } from './unit-cache-donnees.test.js';
+import { casGrilleLocale } from './unit-grille-locale.test.js';
+import { casGrilleMnt } from './unit-grille-mnt.test.js';
+import { casDerivesMnt } from './unit-derives-mnt.test.js';
+import { casHydrologieGrille } from './unit-hydrologie-grille.test.js';
+import { casGeometrieLigneaire } from './unit-geometrie-ligneaire.test.js';
 
 // Tolérance par défaut sur les comparaisons numériques, en pourcentage.
 // Valeur reprise d'HydroCrue (tests/run-tests.js) : couvre les écarts
@@ -50,6 +55,11 @@ const SUITES = [
   ['Source — OpenTopography', casOpenTopographyClient],
   ['Registre des sources de données', casSourcesDonnees],
   ['Cache disque des données', casCacheDonnees],
+  ['Grille locale (projection métrique)', casGrilleLocale],
+  ['Grille de calcul + interpolation MNT', casGrilleMnt],
+  ['Dérivées MNT — pente et courbure', casDerivesMnt],
+  ['Hydrologie — remplissage, D8, TWI', casHydrologieGrille],
+  ['Géométrie linéaire — densité et distance', casGeometrieLigneaire],
 ];
 
 let total = 0;
