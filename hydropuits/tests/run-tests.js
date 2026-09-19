@@ -35,6 +35,8 @@ import { casGrilleMnt } from './unit-grille-mnt.test.js';
 import { casDerivesMnt } from './unit-derives-mnt.test.js';
 import { casHydrologieGrille } from './unit-hydrologie-grille.test.js';
 import { casGeometrieLigneaire } from './unit-geometrie-ligneaire.test.js';
+import { casAhp } from './unit-ahp.test.js';
+import { casReclassement } from './unit-reclassement.test.js';
 
 // Tolérance par défaut sur les comparaisons numériques, en pourcentage.
 // Valeur reprise d'HydroCrue (tests/run-tests.js) : couvre les écarts
@@ -60,6 +62,8 @@ const SUITES = [
   ['Dérivées MNT — pente et courbure', casDerivesMnt],
   ['Hydrologie — remplissage, D8, TWI', casHydrologieGrille],
   ['Géométrie linéaire — densité et distance', casGeometrieLigneaire],
+  ['AHP — poids, cohérence (CI/CR), renormalisation', casAhp],
+  ['Reclassement — seuils, bornes, quantiles', casReclassement],
 ];
 
 let total = 0;

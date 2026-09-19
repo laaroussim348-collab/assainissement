@@ -95,7 +95,8 @@ export function calculerPente(grille, i, j) {
  * exactement sur les 9 points (x,y en mètres, origine à la cellule
  * centrale, x=est, y=nord).
  *
- * SIGNE DE LA COURBURE (à respecter dans favorabilite.js, étape 6) :
+ * SIGNE DE LA COURBURE (à respecter dans reclassement.js, étape 6, et
+ * dans favorabilite.js, étape 7) :
  * `courbureTotale = -2(D+E)` est NÉGATIVE pour une cuvette (concave,
  * converge, favorable) et POSITIVE pour un dôme (convexe, diverge) —
  * vérifié analytiquement sur un paraboloïde synthétique z=a(x²+y²)

@@ -30,7 +30,7 @@ expliquant le *pourquoi*), même habillage, même système de licence.
 | 3 | Carte + saisie du polygone (3 modes) + géométrie géodésique | ✅ (partiel) |
 | 4 | Registre des sources + téléchargement MNT + cache + clés | ✅ |
 | 5 | Facteurs (pente, TWI, densités, courbure…) | ✅ |
-| 6 | Moteur AHP + ratio de cohérence + reclassement | à faire |
+| 6 | Moteur AHP + ratio de cohérence + reclassement | ✅ |
 | 7 | Carte de favorabilité + classement des emplacements | à faire |
 | 8 | Analyse de sensibilité + rapport + export PNG | à faire |
 | 9 | README complet + build `npm run dist` | à faire |
@@ -238,6 +238,83 @@ y drainent aussi) : les valeurs finales ont été confirmées par un script
 de contrôle avant d'être figées dans le test, pas simplement re-dérivées
 une troisième fois à la main (voir l'en-tête de
 `tests/unit-hydrologie-grille.test.js` pour le détail).
+
+## Étape 6 — moteur AHP, cohérence, reclassement
+
+Deux modules purs (`src/calculations/`) :
+
+| Module | Contenu |
+|---|---|
+| `ahp.js` | Poids AHP (vecteur propre principal, puissance itérée), CI/CR (Saaty, 1980), refus explicite si CR ≥ 0,10, renormalisation des poids quand un facteur est désactivé |
+| `reclassement.js` | Reclassement 1..5 sur seuils éditables (bornes exactes testées), seuils par défaut calculés sur les données réelles (quantiles), direction croissante/décroissante par facteur |
+
+Aucune interface n'accompagne cette étape (comme l'étape 5) : ce sont des
+modules de calcul purs, consommés par la carte de favorabilité de l'étape 7.
+
+### Poids AHP : vecteur propre, pas une moyenne de colonnes
+
+Le poids de chaque facteur est le vecteur propre principal de la matrice
+de comparaisons, obtenu par puissance itérée (convergence à 10⁻¹² sur le
+poids de chaque facteur, échec explicite au-delà de 1000 itérations —
+jamais un résultat approché en silence, §4). C'est la méthode exacte de
+Saaty, plus précise que l'approximation courante « moyenne des colonnes
+normalisées ». Vérifiée sur une propriété mathématique indépendante du
+code : une matrice construite comme les ratios EXACTS d'un vecteur de
+poids connu est, par définition, parfaitement cohérente (λmax = n, CI =
+CR = 0) — `tests/unit-ahp.test.js` construit un tel cas (w=[8,4,2,1]) et
+vérifie que le vecteur propre retrouve exactement ce vecteur, plutôt que
+de comparer à une valeur recopiée d'ailleurs.
+
+### Refus explicite si la matrice est incohérente (§3.4, §5)
+
+`calculerPoidsAhp` refuse de produire un poids si CR ≥ 0,10 (seuil de
+Saaty, universel dans la littérature AHP) : le cahier des charges
+interdit qu'un jugement contradictoire produise un chiffre qui a l'air
+valide. Le refus nomme les paires de comparaisons les plus contradictoires
+(`pairesLesPlusIncoherentes`), pour que l'utilisateur sache lesquelles
+revoir plutôt que de recevoir un simple message bloquant. Testé sur un
+cas d'école d'incohérence maximale (cycle A≫B≫C≫A sur l'échelle de Saaty,
+CR calculé ≈ 6,13 — trente fois le seuil).
+
+### Honnêteté sur la matrice de comparaisons par défaut
+
+Le cahier des charges (§3.4) demande que chaque valeur par défaut porte
+en commentaire sa référence bibliographique. Recherche menée pour cette
+étape (19/09/2026) : **aucune publication ne fournit une matrice 8×8 pour
+exactement ces 8 facteurs**, et les études publiées ne s'accordent pas
+entre elles sur des poids numériques — deux exemples trouvés : une étude
+classe densité de linéaments / pente / densité de drainage en tête ;
+une autre (facteurs proches mais différents) donne lithologie 38 %,
+occupation du sol 16 %, TWI 14 %, densité de linéaments 10 %, pente 9 %,
+densité de drainage 7 %, sol 3 %, pluviométrie 3 %. Plutôt que de citer
+une matrice publiée comme si elle correspondait à ce jeu de facteurs (ce
+qu'elle ne fait pas), `MATRICE_DEFAUT_AHP` documente honnêtement qu'elle
+reprend seulement un ORDRE de grandeur défendable pour un contexte de
+socle fracturé, construite pour être cohérente (CR = 0,079, **calculé**
+par le module lui-même, pas visé a priori) et **entièrement modifiable** —
+le CR reste recalculé et affiché à chaque modification.
+
+### Reclassement : seuils calculés sur les données plutôt qu'inventés
+
+Pour la pente, un seuil absolu existe et peut être cité honnêtement
+(classes de pente usuelles en évaluation de l'aptitude à l'infiltration,
+FAO, fusionnées à 5 classes : 2/5/10/20 %). Pour les 7 autres facteurs
+(TWI, densités, distance, courbure, lithologie, pluviométrie), aucun
+seuil absolu universel n'existe : le TWI, en particulier, dépend de la
+résolution de grille (déjà documenté dans `hydrologieGrille.js`) — fixer
+un nombre absolu aurait été exactement la « constante sans origine »
+interdite par le cahier des charges (§4). `seuilsQuantiles()` calcule
+donc des seuils par défaut à partir des données réelles du terrain
+analysé (quantiles 20/40/60/80 %, méthode usuelle de classification par
+quantiles), toujours affichés et modifiables (§3.4).
+
+Le sens de variation (valeur brute croissante = plus ou moins favorable)
+est documenté facteur par facteur dans `SENS_DEFAUT_PAR_FACTEUR`, avec sa
+justification hydrogéologique — à une exception notée explicitement :
+`lithologieSol` n'a pas encore de source de données réellement câblée
+(SoilGrids reste `indisponibleTemporairement`, étape 4), donc son sens
+par défaut est arbitraire et marqué comme tel dans le code, pas présenté
+comme une conclusion.
 
 ## Notes d'architecture
 
