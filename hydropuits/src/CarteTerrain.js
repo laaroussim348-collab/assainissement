@@ -37,20 +37,7 @@ import { t } from './i18n';
 import { C_BLUE, C_TEAL, C_BORDER, C_RED, downloadChartCanvas } from './ui';
 import { airePerimetreGeodesiques } from './calculations/geodesie.js';
 import { exporterAvertissementTexte } from './Avertissement';
-
-const SATELLITE = {
-  url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-  attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics',
-};
-
-// Calque de noms de lieux (villes, douars, routes...), fond transparent, à
-// superposer à l'imagerie satellite (qui n'a aucun texte) pour identifier
-// l'endroit voulu.
-const LABELS = {
-  url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png',
-  attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-  subdomains: 'abcd',
-};
+import { ZOOM_MAX, creerCarte } from './carteBase.js';
 
 // Couleurs du tracé. Reprises de la charte de HydroCrue (contour ambre sur
 // satellite : c'est la teinte qui reste lisible aussi bien sur un sol nu
@@ -82,93 +69,6 @@ function iconeNumero(numero, couleur = C_SOMMET, taille = 22) {
   });
 }
 
-// Détecte la tuile de remplacement « Map data not yet available » qu'Esri
-// renvoie (avec un HTTP 200, pas une erreur réseau — errorTileUrl ne peut
-// donc pas la voir) pour les tuiles sans imagerie disponible à cet endroit
-// à ce niveau de zoom. Analyse uniquement le CONTENU de l'image (couleur
-// gris neutre quasi uniforme, sans la variation naturelle d'une vraie
-// photo aérienne) — un premier essai comparait aussi le poids transféré
-// (Performance API), mais celui-ci vaut 0 dès qu'une tuile est servie
-// depuis le cache navigateur plutôt que le réseau (fréquent en navigant/
-// zoomant), ce qui désactivait la détection silencieusement après les
-// tout premiers chargements. Le contenu décodé, lui, est identique que la
-// tuile vienne du réseau ou du cache.
-function estTuilePlaceholder(img) {
-  try {
-    const c = document.createElement('canvas');
-    c.width = 8; c.height = 8;
-    const ctx = c.getContext('2d');
-    ctx.drawImage(img, 0, 0, 8, 8);
-    const { data } = ctx.getImageData(0, 0, 8, 8);
-    let sR = 0, sG = 0, sB = 0, ecartMax = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i], g = data[i + 1], b = data[i + 2];
-      sR += r; sG += g; sB += b;
-      ecartMax = Math.max(ecartMax, Math.abs(r - g), Math.abs(g - b), Math.abs(r - b));
-    }
-    const n = data.length / 4;
-    const [mR, mG, mB] = [sR / n, sG / n, sB / n];
-    const grisNeutre = mR > 180 && mR < 225 && mG > 180 && mG < 225 && mB > 180 && mB < 225;
-    return ecartMax < 12 && grisNeutre;
-  } catch {
-    return false; // CORS/canvas indisponible : on n'essaie pas de masquer, tant pis
-  }
-}
-
-// Zoom plafonné à 17 (~1,2 m/pixel), pas 19 : Esri ne garantit sa
-// résolution la plus fine (18-19) que dans les zones urbaines/développées
-// — au-delà, dans les zones rurales/agricoles (là où se trouvent
-// justement les terrains étudiés ici), les tuiles n'existent pas et Esri
-// renvoie sa tuile de remplacement « Map data not yet available ». Aucun
-// plafond fixe n'est garanti à 100% partout, mais 17 réduit fortement le
-// risque tout en restant largement assez précis pour placer le sommet
-// d'une parcelle (un piquet, un angle de mur, une limite de culture) —
-// retour utilisateur du 30/08/2026 sur HydroCrue, après un plafond à 19
-// puis une détection par contenu seule jugée insuffisante. La détection
-// par contenu ci-dessus reste active en complément.
-const ZOOM_MAX = 17;
-
-function ajouterFond(map) {
-  const fond = L.tileLayer(SATELLITE.url, {
-    attribution: SATELLITE.attribution,
-    crossOrigin: true,
-    maxZoom: ZOOM_MAX,
-  }).addTo(map);
-  fond.on('tileload', (e) => {
-    if (estTuilePlaceholder(e.tile)) e.tile.style.visibility = 'hidden';
-  });
-  L.tileLayer(LABELS.url, {
-    attribution: LABELS.attribution,
-    subdomains: LABELS.subdomains,
-    crossOrigin: true,
-    maxZoom: ZOOM_MAX,
-  }).addTo(map); // pane par défaut (tilePane) : sous le tracé, au-dessus du satellite
-  return fond;
-}
-
-function creerCarte(container, { interactive }) {
-  const map = L.map(container, {
-    center: [31.792, -7.083], // centre approx. du Maroc, par défaut
-    zoom: interactive ? 6 : 5,
-    // minZoom bas : permet de dézoomer suffisamment pour retrouver un
-    // terrain n'importe où dans le pays avant de zoomer dessus.
-    minZoom: interactive ? 2 : 3,
-    maxZoom: ZOOM_MAX,
-    zoomControl: false,
-    dragging: interactive,
-    scrollWheelZoom: interactive,
-    doubleClickZoom: false, // le double-clic servirait à zoomer pile quand on pose un sommet
-    boxZoom: interactive,
-    keyboard: interactive,
-    touchZoom: interactive,
-    attributionControl: interactive,
-  });
-  // Contrôle de zoom en bas à gauche : le coin haut-gauche est réservé au
-  // panneau d'instructions (voir JSX), pour éviter le chevauchement.
-  if (interactive) L.control.zoom({ position: 'bottomleft' }).addTo(map);
-  ajouterFond(map);
-  return { map };
-}
 
 /** Palier « rond » (mètres) juste inférieur ou égal à la distance mesurée — même logique que L.control.scale. */
 const PALIERS_ECHELLE_M = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000];

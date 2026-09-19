@@ -64,13 +64,16 @@ export const SENS_DEFAUT_PAR_FACTEUR = {
   // = dôme = divergence (voir derivesMnt.js, signe vérifié
   // analytiquement) ⇒ valeur brute croissante = moins favorable.
   courbure: SENS.DECROISSANT,
-  // ⚠️ PROVISOIRE : le sens dépend ENTIÈREMENT de la propriété de sol
-  // réellement utilisée (ex. teneur en argile vs teneur en sable auraient
-  // des sens opposés) — aucune source de lithologie/sol n'est câblée à
-  // l'étape 6 (voir services/sourcesDonnees.js, source SoilGrids marquée
-  // indisponible). Ce sens est un défaut arbitraire, PAS une conclusion
-  // hydrogéologique, à revalider explicitement dès qu'une vraie donnée
-  // alimente ce facteur.
+  // Facteurs.js (étape 7) alimente ce facteur avec le % DE SABLE (SoilGrids,
+  // 0-30 cm) : un sol sableux a une conductivité hydraulique bien
+  // supérieure à un sol argileux (granulométrie ↔ perméabilité, principe
+  // de base de la physique des sols) ⇒ % sable croissant = favorable.
+  // ⚠️ SIMPLIFICATION ASSUMÉE : ce n'est qu'une texture de SURFACE
+  // (0-30 cm), pas une vraie lithologie (nature de la roche, profondeur
+  // au substratum) — et la source SoilGrids reste marquée
+  // `indisponibleTemporairement` (services/sourcesDonnees.js) tant que
+  // l'API ISRIC n'est pas rétablie (vérifié le 19/09/2026), donc ce
+  // facteur est désactivé PAR DÉFAUT côté interface jusqu'à son retour.
   lithologieSol: SENS.CROISSANT,
   // Plus de pluie ⇒ plus de recharge potentielle ⇒ favorable.
   pluviometrie: SENS.CROISSANT,

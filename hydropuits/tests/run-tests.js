@@ -37,6 +37,8 @@ import { casHydrologieGrille } from './unit-hydrologie-grille.test.js';
 import { casGeometrieLigneaire } from './unit-geometrie-ligneaire.test.js';
 import { casAhp } from './unit-ahp.test.js';
 import { casReclassement } from './unit-reclassement.test.js';
+import { casFacteurs } from './unit-facteurs.test.js';
+import { casFavorabilite } from './unit-favorabilite.test.js';
 
 // Tolérance par défaut sur les comparaisons numériques, en pourcentage.
 // Valeur reprise d'HydroCrue (tests/run-tests.js) : couvre les écarts
@@ -64,6 +66,8 @@ const SUITES = [
   ['Géométrie linéaire — densité et distance', casGeometrieLigneaire],
   ['AHP — poids, cohérence (CI/CR), renormalisation', casAhp],
   ['Reclassement — seuils, bornes, quantiles', casReclassement],
+  ['Facteurs — assemblage des 8 facteurs depuis les sources', casFacteurs],
+  ['Favorabilité — combinaison pondérée et classement des points', casFavorabilite],
 ];
 
 let total = 0;

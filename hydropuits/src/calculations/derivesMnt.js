@@ -135,9 +135,15 @@ export function calculerCourbure(grille, i, j) {
  * Applique calculerPente()/calculerCourbure() sur toute la grille.
  * Cellules sans voisinage complet (bord, trou) : NaN dans les tableaux de
  * sortie — PAS 0 (§4).
+ *
+ * `pente_ratio` (tan de la pente locale, PAS le pourcentage) est exposé en
+ * plus de `pente_pourcent` : c'est le tableau que réutilise directement
+ * `hydrologieGrille.calculerTWI()` (voir son en-tête — « même grille,
+ * mêmes cellules » que le facteur Pente, pas une seconde définition).
  */
 export function calculerGrillesDerivees(grille) {
   const n = grille.nbLignes * grille.nbColonnes;
+  const pente_ratio = new Float64Array(n).fill(NaN);
   const pente_pourcent = new Float64Array(n).fill(NaN);
   const courbureTotale = new Float64Array(n).fill(NaN);
   let cellulesValides = 0;
@@ -147,10 +153,10 @@ export function calculerGrillesDerivees(grille) {
       const idx = i * grille.nbColonnes + j;
       const p = calculerPente(grille, i, j);
       const c = calculerCourbure(grille, i, j);
-      if (p) { pente_pourcent[idx] = p.pente_pourcent; cellulesValides++; }
+      if (p) { pente_ratio[idx] = p.pente_ratio; pente_pourcent[idx] = p.pente_pourcent; cellulesValides++; }
       if (c) courbureTotale[idx] = c.courbureTotale;
     }
   }
 
-  return { pente_pourcent, courbureTotale, cellulesValides };
+  return { pente_ratio, pente_pourcent, courbureTotale, cellulesValides };
 }

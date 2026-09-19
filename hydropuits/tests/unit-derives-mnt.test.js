@@ -193,4 +193,14 @@ export const casDerivesMnt = [
     source: 'cohérence — exactement les cellules à 1 de distance du bord',
     executer: () => calculerGrillesDerivees(PLAN).cellulesValides,
   },
+  {
+    libelle: 'Grille dérivée : pente_ratio × 100 = pente_pourcent (même grille, pas deux définitions — voir hydrologieGrille.js)',
+    attendu: true,
+    source: 'étape 7 — pente_ratio ajouté pour être réutilisé tel quel par calculerTWI()',
+    executer: () => {
+      const g = calculerGrillesDerivees(PLAN);
+      const idx = IC * N + JC;
+      return Math.abs(g.pente_ratio[idx] * 100 - g.pente_pourcent[idx]) < 1e-9;
+    },
+  },
 ];

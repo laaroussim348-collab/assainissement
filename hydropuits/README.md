@@ -31,7 +31,7 @@ expliquant le *pourquoi*), même habillage, même système de licence.
 | 4 | Registre des sources + téléchargement MNT + cache + clés | ✅ |
 | 5 | Facteurs (pente, TWI, densités, courbure…) | ✅ |
 | 6 | Moteur AHP + ratio de cohérence + reclassement | ✅ |
-| 7 | Carte de favorabilité + classement des emplacements | à faire |
+| 7 | Carte de favorabilité + classement des emplacements | ✅ (moteur de calcul ; onglets Critères/Résultats à faire — voir plus bas) |
 | 8 | Analyse de sensibilité + rapport + export PNG | à faire |
 | 9 | README complet + build `npm run dist` | à faire |
 
@@ -315,6 +315,78 @@ justification hydrogéologique — à une exception notée explicitement :
 (SoilGrids reste `indisponibleTemporairement`, étape 4), donc son sens
 par défaut est arbitraire et marqué comme tel dans le code, pas présenté
 comme une conclusion.
+
+## Étape 7 — carte de favorabilité, classement des points
+
+Deux nouveaux modules purs (`src/calculations/`), plus une extraction
+d'architecture :
+
+| Module | Contenu |
+|---|---|
+| `facteurs.js` | Assemble les 8 facteurs du §3.4 à partir des données déjà téléchargées (étape 4) et des modules de calcul de l'étape 5 — la correspondance facteur ↔ source(s) est écrite UNE FOIS, ici |
+| `favorabilite.js` | Reclasse les 8 grilles (via `reclassement.js`), les combine par les poids AHP (`ahp.js`) en un score 1..5, classe les N meilleurs points |
+| `carteBase.js` | Fond de carte (Esri World Imagery + CARTO, `ZOOM_MAX=17`) extrait de `CarteTerrain.js` pour être PARTAGÉ, pas recopié, par la future carte de favorabilité — §2/§8 imposent de ne jamais faire diverger le fond de carte |
+
+**Ce qui manque encore à cette étape, explicitement** : les onglets
+**Critères** (activation des facteurs, seuils éditables, matrice AHP
+éditable avec CR en direct) et **Résultats** (carte de favorabilité,
+liste classée) du §6 n'existent pas encore — seul le MOTEUR DE CALCUL
+qu'ils devront afficher est construit et testé à cette étape. Raison de
+ce découpage : brancher ces deux onglets suppose aussi de récupérer les
+données déjà téléchargées à l'étape 4 (qui ne sont PAS conservées dans
+l'état du projet, voir `DonneesTab.js` — seules leurs métadonnées le
+sont) et de les faire transiter par ce nouveau pipeline en conditions
+réelles, ce qui est un morceau de travail à part entière, greffé sur
+l'étape 8 (qui a de toute façon besoin d'un onglet Résultats pour
+afficher la sensibilité et le rapport).
+
+### Pourquoi la lithologie et la pluviométrie sont des valeurs UNIQUES, pas des grilles
+
+SoilGrids et NASA POWER sont interrogés en un seul point (le centre
+approché du terrain) à des résolutions natives (≈ 250 m et ≈ 50-60 km)
+bien plus grossières que la parcelle visée par ce logiciel — construire
+une grille interpolée à partir d'un seul point serait une fausse
+précision. La valeur est donc appliquée uniformément sur tout le
+terrain, ce qui est dit explicitement (avertissement affiché, pas un
+défaut silencieux) plutôt que présenté comme une vraie variation
+spatiale mesurée.
+
+Pour la lithologie/sol, faute d'une vraie classification lithologique
+câblée, `facteurs.js` utilise le **pourcentage de sable** (SoilGrids,
+0-30 cm) comme facteur de favorabilité : un sol sableux a une
+conductivité hydraulique bien supérieure à un sol argileux (principe de
+base de la physique des sols). C'est une simplification assumée — une
+vraie évaluation lithologique demanderait la nature de la roche et la
+profondeur au substratum, pas seulement la texture de surface — et de
+toute façon SoilGrids reste marqué `indisponibleTemporairement` (l'API
+ISRIC était en pause au 19/09/2026).
+
+### La grille de calcul dépend du MNT, donc TOUS les facteurs grillés en dépendent
+
+`construireGrilleCalcul()` (étape 5) définit la géométrie de la grille
+(bornes, taille de maille, masque du polygone) EN MÊME TEMPS qu'elle
+interpole l'altitude. Si le MNT est indisponible, ni la pente/TWI/
+courbure NI les densités/distance (qui n'ont pourtant rien à voir avec
+l'altitude) ne peuvent être calculées, faute de géométrie de grille sur
+laquelle les poser — `facteurs.js` le dit explicitement
+(`facAvtMntManquant`) plutôt que de laisser deviner pourquoi la carte
+resterait vide.
+
+### Score de favorabilité : jamais un pourcentage
+
+Le score combiné est une somme pondérée de classes 1 à 5 par des poids
+qui somment à 1 (renormalisation AHP, étape 6) : il reste donc lui-même
+dans [1,5], directement comparable aux classes de chaque facteur.
+Volontairement PAS ramené à un pourcentage 0-100 % : un pourcentage
+ressemblerait à une probabilité de trouver de l'eau, ce que ce logiciel
+s'interdit explicitement de présenter (§5, voir `Avertissement.js`).
+
+Règle de complétude, testée : **un seul facteur ACTIF manquant à une
+cellule invalide le score de cette cellule entière** (`NaN`), jamais une
+moyenne recalculée en silence sur les facteurs restants — la pondération
+AHP a été choisie par l'utilisateur pour un ensemble précis de facteurs ;
+recalculer localement reviendrait à lui faire dire autre chose que ce
+qu'il a validé, sans le prévenir.
 
 ## Notes d'architecture
 
