@@ -1,6 +1,6 @@
 # HydroPuits — Favorabilité hydrogéologique pour l'implantation d'un forage
 
-> ⚠️ **README provisoire — étape 3 sur 9.** Le README complet (avec la
+> ⚠️ **README provisoire — étape 4 sur 9.** Le README complet (avec la
 > section « Limites connues », la description du moteur AHP, des sources de
 > données et de la procédure de build) est prévu à l'étape 9 du plan de
 > construction. Ce fichier ne décrit que l'état actuel.
@@ -28,7 +28,7 @@ expliquant le *pourquoi*), même habillage, même système de licence.
 | 1 | Lecture du projet de référence + plan | ✅ |
 | 2 | Squelette : build, serveur, licence, i18n 4 langues, coquille UI | ✅ |
 | 3 | Carte + saisie du polygone (3 modes) + géométrie géodésique | ✅ (partiel) |
-| 4 | Registre des sources + téléchargement MNT + cache + clés | à faire |
+| 4 | Registre des sources + téléchargement MNT + cache + clés | ✅ |
 | 5 | Facteurs (pente, TWI, densités, courbure…) | à faire |
 | 6 | Moteur AHP + ratio de cohérence + reclassement | à faire |
 | 7 | Carte de favorabilité + classement des emplacements | à faire |
@@ -112,6 +112,55 @@ hors-ligne une fois activé.
 
 > ⚠️ La clé d'administration n'est **jamais** commitée : elle reste dans le
 > stockage local de votre navigateur une fois saisie dans l'outil admin.
+
+## Étape 4 — sources de données
+
+L'onglet **Données** est opérationnel : registre explicite des 5 sources
+(`src/services/sourcesDonnees.js`), téléchargement avec file d'attente,
+progression et annulation (`src/services/telechargementJobs.js`), cache
+disque par terrain (`src/services/cacheDonnees.js`), et gestion locale des
+clés d'API (`src/services/clesLocales.js`).
+
+| Source | Clé | État |
+|---|---|---|
+| Open-Meteo Elevation (MNT ≈ 90 m) | non | opérationnelle |
+| Overpass API (OpenStreetMap — cours d'eau, sources, puits, failles) | non | opérationnelle |
+| NASA POWER (pluviométrie) | non | opérationnelle |
+| SoilGrids / ISRIC (texture du sol) | non | ⚠️ service en pause côté ISRIC (vérifié le 19/09/2026), client prêt |
+| OpenTopography (MNT 30 m) | **oui** | opérationnelle une fois la clé collée par l'utilisateur |
+
+**Règle absolue respectée à la lettre (§3.3)** : le logiciel ne crée jamais
+de compte, ne se connecte à aucun compte Google/Gmail, n'automatise aucune
+inscription. Une source à clé reste désactivée tant que l'utilisateur n'a
+pas collé lui-même, dans l'onglet Données, la clé obtenue en s'inscrivant
+ailleurs. Le rappel de cette règle est affiché en permanence en tête
+d'onglet.
+
+**Cache et re-jeu hors ligne** : chaque téléchargement est identifié par le
+CONTOUR du terrain (arrondi à ~11 cm, insensible au bruit de tracé) et les
+paramètres qui changent le résultat — un terrain retravaillé retrouve son
+cache instantanément, sans nouvel appel réseau (vérifié : voir plus bas).
+
+### Limite de vérification, propre à cet environnement de développement
+
+Le réseau sortant de cet environnement est filtré par liste blanche et ne
+couvre aucun des 5 services externes — chaque tentative de téléchargement y
+échoue avec `Host not in allowlist`. C'est la même limite que documentait
+déjà `nasaPowerClient.js` de HydroCrue (« l'appel réseau lui-même n'a pas pu
+être testé en conditions réelles dans cet environnement »). Ce qui a été
+vérifié malgré cette limite, en conditions réelles dans Chromium :
+
+- construction d'URL et analyse de réponse de **chaque** client, sur
+  réponses synthétiques conformes au format documenté (`npm test`) ;
+- le registre, l'enregistrement/la suppression d'une clé, le démarrage d'un
+  job, son état d'erreur, et son rejeu instantané depuis un cache
+  pré-rempli — bout en bout, serveur + interface ;
+- l'échec réseau réel (bloqué par le pare-feu sortant du bac à sable) est
+  capturé proprement et affiché à l'écran, sans page blanche ni plantage.
+
+Ce qui reste à vérifier en dehors de ce bac à sable, sur un poste avec accès
+Internet normal : qu'une réponse RÉELLE de chaque service correspond bien
+au format documenté que les tests reproduisent.
 
 ## Notes d'architecture
 

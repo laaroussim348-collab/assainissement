@@ -27,6 +27,7 @@ import { useI18n } from "./useI18n";
 import LicenceGate from "./licence/LicenceGate";
 import Avertissement from "./Avertissement";
 import TerrainTab from "./tabs/TerrainTab";
+import DonneesTab from "./tabs/DonneesTab";
 import {
   C_BLUE,
   TBtn, TSep, MItem, NoData,
@@ -402,9 +403,9 @@ function ApplicationPrincipale() {
             lorsque le contenu arrivera. */}
         {ONGLETS_RESULTAT.includes(onglet) && <Avertissement />}
 
-        {onglet === "terrain" ? (
-          <TerrainTab etat={etat} majEtat={majEtat} afficherToast={afficherToast} />
-        ) : (
+        {onglet === "terrain" && <TerrainTab etat={etat} majEtat={majEtat} afficherToast={afficherToast} />}
+        {onglet === "donnees" && <DonneesTab etat={etat} majEtat={majEtat} afficherToast={afficherToast} />}
+        {onglet !== "terrain" && onglet !== "donnees" && (
           <>
             <NoData title={VIDES[onglet][0]} hint={VIDES[onglet][1]} />
             <p style={{ textAlign: "center", fontSize: 11, color: "#aaa", marginTop: -30 }}>

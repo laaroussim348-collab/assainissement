@@ -2,5 +2,6 @@ node_modules/
 build/
 dist/
 .activation-local.json
+.cles-sources-donnees.json
 .cache-donnees/
 *.log

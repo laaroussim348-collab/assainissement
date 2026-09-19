@@ -16,15 +16,22 @@
  *     passer par ici évite d'en dépendre, et permet de mettre en cache sur
  *     disque une fois pour toutes.
  *
- * ROUTES — état à l'étape 2 (squelette) :
+ * ROUTES :
  *   GET  /api/activation-status  -> { active, raison?, expiresAt?, machineId, ... }
  *   GET  /api/machine-id         -> { machineId }
  *   POST /api/activer  {code}    -> { ok:false, erreur } (modèle sans code)
  *   GET  /api/clipboard-read     -> { ok, texte }   (404 hors Electron)
  *   POST /api/clipboard-write    -> { ok }          (404 hors Electron)
- * Les routes de données (MNT, Overpass, NASA POWER, SoilGrids,
- * OpenTopography) et le cache disque arrivent à l'étape 4 — elles seront,
- * comme dans HydroCrue, réservées aux installations activées.
+ *
+ *   GET    /api/sources                 -> registre des sources + état (cache, clé) — accessible sans activation, c'est de la simple consultation
+ *   POST   /api/cles/:idSource {cle}     -> enregistre une clé saisie par l'utilisateur (réservé aux postes activés, comme les téléchargements)
+ *   DELETE /api/cles/:idSource           -> supprime une clé enregistrée
+ *   POST   /api/telechargement/:idSource {sommets, parametres} -> démarre (ou récupère du cache) -> { jobId }
+ *   GET    /api/telechargement/etat/:jobId      -> état courant (sondage périodique côté interface)
+ *   POST   /api/telechargement/annuler/:jobId   -> demande d'annulation
+ * Les 3 dernières routes sont réservées aux installations activées, comme
+ * les routes réseau de HydroCrue (/api/delineation, /api/pluviometrie) —
+ * ce sont les seules à consommer le quota des services tiers.
  *
  * Lancement :  npm run build && npm run server   →  http://localhost:3000
  * -----------------------------------------------------------------------
@@ -35,6 +42,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { obtenirMachineId, activerAvecCode, verifierActivation } from './src/services/activationClient.js';
+import { SOURCES, obtenirSource } from './src/services/sourcesDonnees.js';
+import { enregistrerCle, supprimerCle, toutesLesClesPresentes } from './src/services/clesLocales.js';
+import { etatGlobalCache } from './src/services/cacheDonnees.js';
+import { demarrerTelechargement, etatTelechargement, annulerTelechargement } from './src/services/telechargementJobs.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // build/ (sortie de `react-scripts build`) est embarqué dans l'app (archive
@@ -103,6 +114,82 @@ async function apiActiver(req, res) {
   });
 }
 
+// ---------------------------------------------------------------------
+// Routes du registre des sources de données (étape 4).
+// ---------------------------------------------------------------------
+
+/** GET /api/sources -> registre + état de cache + état des clés, fusionnés
+ *  pour que l'onglet Données n'ait qu'un seul appel à faire. Ne fait AUCUN
+ *  appel réseau externe : c'est de la consultation d'état local. */
+function apiSources(res) {
+  const cache = etatGlobalCache();
+  const cles = toutesLesClesPresentes();
+  const sources = SOURCES.map((s) => ({
+    ...s,
+    nbEntreesCache: cache[s.id] || 0,
+    cle: s.cleRequise ? (cles[s.id] || { presente: false }) : undefined,
+  }));
+  sendJson(res, 200, { sources });
+}
+
+function lireCorpsJson(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      try { resolve(JSON.parse(body || '{}')); } catch (e) { reject(new Error(`Corps JSON invalide : ${e.message}`)); }
+    });
+    req.on('error', reject);
+  });
+}
+
+async function apiEnregistrerCle(req, res, idSource) {
+  try {
+    obtenirSource(idSource); // lève si la source est inconnue
+    const { cle } = await lireCorpsJson(req);
+    enregistrerCle(idSource, cle);
+    sendJson(res, 200, { ok: true });
+  } catch (e) {
+    sendJson(res, 400, { ok: false, erreur: e.message });
+  }
+}
+
+function apiSupprimerCle(res, idSource) {
+  try {
+    obtenirSource(idSource);
+    supprimerCle(idSource);
+    sendJson(res, 200, { ok: true });
+  } catch (e) {
+    sendJson(res, 400, { ok: false, erreur: e.message });
+  }
+}
+
+async function apiDemarrerTelechargement(req, res, idSource) {
+  try {
+    const statutLicence = await verifierActivation();
+    if (!statutLicence.active) {
+      sendJson(res, 403, { ok: false, erreur: "Logiciel non activé — voir l'écran d'activation.", licence: statutLicence });
+      return;
+    }
+    const { sommets, parametres } = await lireCorpsJson(req);
+    const jobId = demarrerTelechargement(idSource, sommets, parametres || {});
+    sendJson(res, 200, { ok: true, jobId });
+  } catch (e) {
+    sendJson(res, 400, { ok: false, erreur: e.message });
+  }
+}
+
+function apiEtatTelechargement(res, jobId) {
+  const etat = etatTelechargement(jobId);
+  if (!etat) { sendJson(res, 404, { ok: false, erreur: 'Identifiant de téléchargement inconnu (redémarrage du logiciel entre-temps ?).' }); return; }
+  sendJson(res, 200, { ok: true, ...etat });
+}
+
+function apiAnnulerTelechargement(res, jobId) {
+  const annule = annulerTelechargement(jobId);
+  sendJson(res, 200, { ok: annule });
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -153,6 +240,28 @@ const server = http.createServer(async (req, res) => {
       }
     });
     return;
+  }
+
+  // --- Sources de données (étape 4) ---
+  if (urlPath === '/api/sources' && req.method === 'GET') { apiSources(res); return; }
+
+  {
+    const mCle = urlPath.match(/^\/api\/cles\/([^/]+)$/);
+    if (mCle && req.method === 'POST') { await apiEnregistrerCle(req, res, decodeURIComponent(mCle[1])); return; }
+    if (mCle && req.method === 'DELETE') { apiSupprimerCle(res, decodeURIComponent(mCle[1])); return; }
+  }
+
+  {
+    const mDemarrer = urlPath.match(/^\/api\/telechargement\/([^/]+)$/);
+    if (mDemarrer && req.method === 'POST') { await apiDemarrerTelechargement(req, res, decodeURIComponent(mDemarrer[1])); return; }
+  }
+  {
+    const mEtat = urlPath.match(/^\/api\/telechargement\/etat\/([^/]+)$/);
+    if (mEtat && req.method === 'GET') { apiEtatTelechargement(res, mEtat[1]); return; }
+  }
+  {
+    const mAnnuler = urlPath.match(/^\/api\/telechargement\/annuler\/([^/]+)$/);
+    if (mAnnuler && req.method === 'POST') { apiAnnulerTelechargement(res, mAnnuler[1]); return; }
   }
 
   // Tout le reste est servi depuis /build (sortie de react-scripts build) ;

@@ -23,6 +23,13 @@ import { casI18n } from './unit-i18n.test.js';
 import { casGeodesie } from './unit-geodesie.test.js';
 import { casPolygone } from './unit-polygone.test.js';
 import { casImportTerrain } from './unit-import-terrain.test.js';
+import { casElevationClient } from './unit-elevation-client.test.js';
+import { casOverpassClient } from './unit-overpass-client.test.js';
+import { casNasaPowerClient } from './unit-nasa-power-client.test.js';
+import { casSoilGridsClient } from './unit-soil-grids-client.test.js';
+import { casOpenTopographyClient } from './unit-open-topography-client.test.js';
+import { casSourcesDonnees } from './unit-sources-donnees.test.js';
+import { casCacheDonnees } from './unit-cache-donnees.test.js';
 
 // Tolérance par défaut sur les comparaisons numériques, en pourcentage.
 // Valeur reprise d'HydroCrue (tests/run-tests.js) : couvre les écarts
@@ -36,6 +43,13 @@ const SUITES = [
   ['Géodésie — ellipsoïde WGS84 (Karney)', casGeodesie],
   ['Polygone — validation et normalisation', casPolygone],
   ['Import — fichier de sommets', casImportTerrain],
+  ['Source — Open-Meteo Elevation', casElevationClient],
+  ['Source — Overpass API (OSM)', casOverpassClient],
+  ['Source — NASA POWER', casNasaPowerClient],
+  ['Source — SoilGrids (ISRIC)', casSoilGridsClient],
+  ['Source — OpenTopography', casOpenTopographyClient],
+  ['Registre des sources de données', casSourcesDonnees],
+  ['Cache disque des données', casCacheDonnees],
 ];
 
 let total = 0;
