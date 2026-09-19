@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HydroPuits — Plateforme de Licences</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath d='M20 3 L35 30 A17 17 0 0 1 5 30 Z' fill='%2316283a'/%3E%3Cpath d='M12 24 Q20 17 28 24' fill='none' stroke='%231e7a72' stroke-width='2.6'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!--
+  admin/licences-admin.html — Plateforme d'administration des activations HydroPuits.
+  ─────────────────────────────────────────────────────────────────────────────
+  MODÈLE UNIFIÉ (essai + licence, façon AutoCAD — retour utilisateur du
+  29/08/2026) : un seul build, aucun code d'activation. Chaque poste
+  s'enregistre AUTOMATIQUEMENT (par son Identifiant Machine — SHA-256 des
+  adresses MAC, voir src/services/machineId.js) dès son premier lancement,
+  avec un essai gratuit limité (TRIAL_HEURES dans le script Apps Script,
+  DOIT rester identique à DUREE_ESSAI_HEURES dans
+  src/services/activationClient.js). Passé ce délai, le poste apparaît ici
+  "En attente" — l'éditeur clique "Activer" en face de son Identifiant
+  Machine, SANS que le client n'ait à envoyer ou saisir quoi que ce soit
+  (l'appli se débloque automatiquement au prochain contrôle, toutes les 60s).
+
+  Volontairement AUCUNE télémétrie au-delà de ce qui est strictement
+  nécessaire à la licence : Identifiant Machine, première/dernière
+  connexion, statut (essai/actif/en attente/révoqué). Rien d'autre n'est
+  collecté ni affiché ici.
+
+  ⚠️ SÉCURITÉ — L'URL Google Apps Script ci-dessous (DEFAULT_GS_URL) est le
+  déploiement propre à ce produit. La clé d'administration N'EST PAS
+  pré-remplie (jamais stockée dans ce dépôt, qui est public sur GitHub
+  Pages) : saisissez-la manuellement dans le champ "Clé d'administration"
+  — elle doit être identique à ADMIN_KEY dans le script déployé (panneau
+  Configuration en bas de page). Choisissez une clé longue et
+  imprévisible, pas un simple code à 6 chiffres.
+-->
+<style>
+:root{
+  --ink:#16283a; --ink-soft:#3c5164; --paper:#f2f3ef; --paper-raised:#ffffff;
+  --line:#d7d9d1; --line-strong:#b9beb1;
+  --water:#1e7a72; --water-dark:#145a54; --water-tint:#e3f0ee;
+  --contour:#8a6a3a; --contour-tint:#f2ead9;
+  --warn:#a6612a; --warn-tint:#faedde;
+  --error:#a6392a; --error-tint:#f9e3df;
+  --ok:#2f6b4f; --ok-tint:#e4f0e9;
+  --font-display:'IBM Plex Sans','Segoe UI',system-ui,sans-serif;
+  --font-mono:'IBM Plex Mono','Consolas',monospace;
+  --radius:3px;
+  --shadow:0 1px 2px rgba(22,40,58,.08),0 4px 14px rgba(22,40,58,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-display);background:var(--paper);color:var(--ink);min-height:100vh;font-size:15px;line-height:1.5}
+.hdr{background:var(--ink);color:#eef1ee;padding:16px 28px;border-bottom:3px solid var(--water);
+  display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.hdr-mark{display:flex;align-items:center;gap:12px}
+.hdr h1{font-size:19px;font-weight:600;letter-spacing:.01em}
+.hdr .sub{font-size:11.5px;opacity:.75;margin-top:3px}
+.badge{font-size:11px;background:rgba(255,255,255,.12);padding:4px 12px;border-radius:20px;border:1px solid rgba(255,255,255,.18)}
+.wrap{max-width:1300px;margin:22px auto;padding:0 16px 60px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.stat{background:var(--paper-raised);border-radius:var(--radius);padding:16px;text-align:center;box-shadow:var(--shadow)}
+.stat-v{font-size:26px;font-weight:700;color:var(--water-dark);font-family:var(--font-mono)}
+.stat-l{font-size:10.5px;color:var(--ink-soft);margin-top:4px;text-transform:uppercase;letter-spacing:.05em}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+@media(max-width:900px){.g2,.stats{grid-template-columns:1fr}}
+.panel{background:var(--paper-raised);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-bottom:16px}
+.panel-hd{background:var(--paper);padding:12px 18px;border-bottom:1px solid var(--line);font-weight:600;
+  font-size:13.5px;color:var(--ink);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.panel-bd{padding:18px}
+label{display:block;font-size:11px;font-weight:600;color:var(--ink-soft);margin-bottom:4px}
+input[type=text],input[type=number],select,textarea{width:100%;padding:9px 11px;font-family:inherit;
+  border:1px solid var(--line-strong);border-radius:var(--radius);font-size:13px;transition:border .2s,box-shadow .2s;background:#fff;color:var(--ink)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--water);box-shadow:0 0 0 3px rgba(30,122,114,.12)}
+.field{margin-bottom:13px}
+.field small{font-size:10.5px;color:#8b95a1;display:block;margin-top:4px;line-height:1.6}
+.btn{padding:9px 18px;border:1px solid transparent;border-radius:var(--radius);font-size:12.5px;font-weight:600;
+  cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;font-family:inherit}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-primary{background:var(--water);color:#fff}.btn-primary:hover:not(:disabled){background:var(--water-dark)}
+.btn-ok{background:var(--ok);color:#fff}.btn-ok:hover:not(:disabled){background:#245a41}
+.btn-danger{background:var(--error);color:#fff}.btn-danger:hover:not(:disabled){background:#8a2f22}
+.btn-ghost{background:none;border-color:var(--line-strong);color:var(--ink-soft)}.btn-ghost:hover:not(:disabled){border-color:var(--water);color:var(--water-dark)}
+.btn-sm{padding:5px 11px;font-size:11px}
+.btn-full{width:100%;justify-content:center;padding:11px}
+.info{background:var(--ok-tint);border:1px solid #b7d9c6;border-radius:var(--radius);padding:10px 12px;
+  font-size:11.5px;color:var(--ok);margin-bottom:12px;line-height:1.7}
+.warn{background:var(--warn-tint);border:1px solid #e8c397;border-radius:var(--radius);padding:10px 12px;
+  font-size:11.5px;color:var(--warn);margin-bottom:12px;line-height:1.7}
+.err{background:var(--error-tint);border:1px solid #eab4ab;border-radius:var(--radius);padding:10px 12px;
+  font-size:11.5px;color:var(--error);margin-bottom:12px;line-height:1.7}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:11.5px}
+th{background:var(--paper);padding:9px 10px;text-align:left;font-weight:600;color:var(--ink-soft);
+  border-bottom:2px solid var(--line);white-space:nowrap;text-transform:uppercase;font-size:10px;letter-spacing:.04em}
+td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:hover td{background:var(--paper)}
+tr.row-pending td{background:var(--warn-tint)}
+tr.row-pending:hover td{background:#f5e2c4}
+.mono{font-family:var(--font-mono);font-size:10.5px}
+.badge2{padding:2px 9px;border-radius:12px;font-size:10px;font-weight:700;white-space:nowrap}
+.b-act{background:var(--ok-tint);color:var(--ok)}
+.b-rev{background:var(--error-tint);color:var(--error)}
+.b-trial{background:var(--water-tint);color:var(--water-dark)}
+.b-pend{background:var(--warn-tint);color:var(--warn)}
+.actions{display:flex;gap:4px;flex-wrap:wrap}
+.empty{text-align:center;padding:40px;color:#9aa5af;font-size:13px}
+.toolbar{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.chk{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ink-soft);font-weight:600;cursor:pointer}
+.chk input{width:auto}
+.gs-box{background:var(--contour-tint);border:1px solid #d3b98a;border-radius:var(--radius);padding:12px;margin-bottom:14px}
+.gs-box label{color:var(--contour);margin-bottom:5px}
+.gs-box input{border-color:#d3b98a;font-family:var(--font-mono);font-size:11px}
+.gs-box .field{margin-bottom:10px}
+.gs-box .field:last-child{margin-bottom:0}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);
+  color:#fff;padding:10px 22px;border-radius:6px;font-size:12px;z-index:9999;
+  animation:fadeUp .3s;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,.25)}
+@keyframes fadeUp{from{opacity:0;transform:translate(-50%,14px)}to{opacity:1;transform:translate(-50%,0)}}
+.steps .step{display:flex;gap:12px;margin-bottom:14px;align-items:flex-start}
+.step-num{background:var(--water);color:#fff;border-radius:50%;width:24px;height:24px;
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;margin-top:1px;font-family:var(--font-mono)}
+.step-txt{font-size:12px;line-height:1.7;color:var(--ink-soft)}
+.step-txt b{color:var(--ink)}
+.step-txt code{background:var(--paper);padding:1px 6px;border-radius:3px;font-family:var(--font-mono);font-size:11px;color:var(--water-dark)}
+.code-copy{background:var(--water);color:#fff;border:none;padding:4px 10px;border-radius:var(--radius);font-size:10px;cursor:pointer;font-family:inherit}
+.code-copy:hover{background:var(--water-dark)}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-mark">
+    <svg viewBox="0 0 40 40" width="30" height="30" style="flex-shrink:0">
+      <path d="M20 3 L35 30 A17 17 0 0 1 5 30 Z" fill="none" stroke="#eef1ee" stroke-width="2.4"/>
+      <path d="M12 24 Q20 17 28 24" fill="none" stroke="#1e7a72" stroke-width="2.6"/>
+    </svg>
+    <div>
+      <h1>HydroPuits &mdash; Plateforme de Licences</h1>
+      <div class="sub">Postes enregistrés (essai automatique + activation à distance, sans code)</div>
+    </div>
+  </div>
+  <div class="badge">v2 &mdash; Modèle unifié</div>
+</div>
+
+<div class="wrap">
+
+  <div class="warn" style="margin-bottom:18px">
+    ⚠️ <b>Clé d'administration :</b> saisissez-la ci-dessous — elle n'est jamais stockée dans le dépôt du projet,
+    seulement dans le stockage local de ce navigateur. Voir le panneau "Configuration" tout en bas pour le script
+    Google Apps Script à déployer/mettre à jour.
+  </div>
+
+  <div class="gs-box">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="field" style="margin-bottom:0">
+        <label>🔗 URL Google Apps Script (obligatoire)</label>
+        <input type="text" id="gsUrl" placeholder="https://script.google.com/macros/s/XXXX/exec" oninput="saveConfig()">
+      </div>
+      <div class="field" style="margin-bottom:0">
+        <label>🔑 Clé d'administration (identique à ADMIN_KEY dans le script)</label>
+        <input type="text" id="adminKey" placeholder="Clé secrète" oninput="saveConfig()">
+      </div>
+    </div>
+    <small style="color:var(--contour);display:block;margin-top:8px">Voir le panneau "Configuration" en bas de page pour créer/mettre à jour le script gratuit et définir cette clé.</small>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-v" id="sTotal">–</div><div class="stat-l">Total postes</div></div>
+    <div class="stat"><div class="stat-v" id="sTrial" style="color:var(--water-dark)">–</div><div class="stat-l">En essai</div></div>
+    <div class="stat"><div class="stat-v" id="sPending" style="color:var(--warn)">–</div><div class="stat-l">En attente de paiement</div></div>
+    <div class="stat"><div class="stat-v" id="sActive" style="color:var(--ok)">–</div><div class="stat-l">Actifs (licenciés)</div></div>
+  </div>
+
+  <!-- LISTE DES POSTES -->
+  <div class="panel">
+    <div class="panel-hd">
+      <span>📡 Postes enregistrés (<span id="jCount">0</span>)</span>
+      <div class="toolbar">
+        <label class="chk"><input type="checkbox" id="onlyPending" onchange="renderTable()"> En attente seulement</label>
+        <button class="btn btn-ghost btn-sm" onclick="refreshList()">🔄 Actualiser</button>
+      </div>
+    </div>
+    <div id="tableWrap"><div class="empty">Configurez l'URL et la clé d'administration ci-dessus, puis cliquez "Actualiser".</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd">📋 Comment ça marche</div>
+    <div class="panel-bd">
+      <div class="steps">
+        <div class="step"><div class="step-num">1</div>
+          <div class="step-txt">Le client installe <b>HydroPuits</b> et le lance → un essai gratuit démarre <b>automatiquement</b>, sans rien à saisir. Son poste apparaît ici tout seul (colonne <b>Identifiant Machine</b>), avec le statut <b>Essai</b> et le temps restant.</div>
+        </div>
+        <div class="step"><div class="step-num">2</div>
+          <div class="step-txt">Passé le délai d'essai, le poste passe automatiquement <b>En attente de paiement</b> dans ce tableau (surligné) — le client voit son Identifiant Machine à l'écran et est invité à vous contacter.</div>
+        </div>
+        <div class="step"><div class="step-num">3</div>
+          <div class="step-txt">Une fois le paiement reçu, cliquez <b>✅ Activer</b> en face de la ligne correspondante (vous pouvez retrouver le poste par l'Identifiant Machine que le client vous a communiqué, ou par la date de première connexion).</div>
+        </div>
+        <div class="step"><div class="step-num">4</div>
+          <div class="step-txt">C'est tout — <b>aucun code à transmettre</b>. L'application du client se débloque automatiquement au prochain contrôle (toutes les 60s si elle est ouverte).</div>
+        </div>
+        <div class="step"><div class="step-num">5</div>
+          <div class="step-txt">Pour bloquer un poste : cliquez <b>⛔ Révoquer</b>. Effet au prochain contrôle (jusqu'à 7 jours de grâce si le poste était hors-ligne au moment de la révocation).</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONFIG -->
+  <div class="panel">
+    <div class="panel-hd">⚙️ Configuration Google Sheets — Instructions complètes</div>
+    <div class="panel-bd" style="font-size:12px;line-height:1.9">
+
+      <div class="warn">
+        <b>Prérequis :</b> un compte Google (Gmail). Tout est gratuit.
+        Le script Google Apps Script sert de serveur d'activation pour HydroPuits (routes appelées par
+        <code>src/services/activationClient.js</code>). Ce script crée lui-même l'onglet <code>Installations</code>
+        dans votre classeur au premier appel — aucune colonne à créer à la main.
+      </div>
+
+      <b>Étape 1 — Créer le Google Sheet</b>
+      <ol style="margin:8px 0 14px 18px">
+        <li>Ouvrez <a href="https://sheets.google.com" target="_blank" style="color:var(--water-dark)">sheets.google.com</a> → Nouveau classeur</li>
+        <li>Nommez-le <b>HydroPuits_Licences</b> (le nom exact n'a pas d'importance — le script gère ses propres onglets)</li>
+      </ol>
+
+      <b>Étape 2 — Créer le Google Apps Script</b>
+      <ol style="margin:8px 0 8px 18px">
+        <li>Dans votre Sheet → menu <b>Extensions → Apps Script</b></li>
+        <li>Effacez tout le contenu existant et collez ce code :</li>
+      </ol>
+
+      <div style="position:relative;margin-bottom:8px">
+        <button class="code-copy" onclick="copyScript()" style="position:absolute;top:6px;right:6px;z-index:1">📋 Copier</button>
+        <textarea id="gsCode" readonly rows="40"
+          style="width:100%;font-family:'IBM Plex Mono',monospace;font-size:10.5px;background:#16283a;
+            color:#a8d8c8;border:none;border-radius:6px;padding:14px;resize:none;line-height:1.7">
+const SHEET_NAME  = "Installations"; // créé automatiquement au premier appel si absent
+const ADMIN_KEY   = "__ADMIN_KEY__"; // Doit être identique au champ "Clé d'administration" de cet outil
+const TRIAL_HEURES = 72; // 3 jours — DOIT rester identique à DUREE_ESSAI_HEURES (src/services/activationClient.js)
+
+function doGet(e) {
+  const p = e.parameter;
+  const action = p.action || "";
+  const sheet = getSheet_();
+
+  if (action === "checkin")  return doCheckin_(sheet, p);   // appelé par HydroPuits, aucune clé requise
+  if (action === "activate") return doActivate_(sheet, p);  // admin uniquement
+  if (action === "revoke")   return doRevoke_(sheet, p);    // admin uniquement (aussi utilisé pour réactiver, status=active)
+  if (action === "list")     return doList_(sheet, p);      // admin uniquement
+
+  return out({ error: "Action inconnue : " + action });
+}
+
+function getSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_NAME);
+    sheet.appendRow(["machineId","firstSeen","lastSeen","trialExpiresAt","status","client","activatedAt","note","licenseExpiresAt"]);
+  }
+  return sheet;
+}
+
+// ── CHECKIN : enregistrement automatique + statut courant. Aucune clé requise. ──
+function doCheckin_(sheet, p) {
+  const machineId = (p.machineId || "").trim().toUpperCase();
+  if (!machineId) return out({ active:false, raison:"machine_id_manquant" });
+
+  const data = sheet.getDataRange().getValues();
+  const now = new Date();
+
+  for (let i = 1; i < data.length; i++) {
+    if ((data[i][0]||"").toString().trim().toUpperCase() !== machineId) continue;
+
+    const rowNum = i + 1;
+    sheet.getRange(rowNum, 3).setValue(now); // lastSeen
+    const status = (data[i][4]||"trial").toString().toLowerCase();
+
+    if (status === "revoked") return out({ active:false, status:"revoked", raison:"refuse_par_serveur" });
+    if (status === "active") {
+      const licenseExpiresAtRaw = data[i][8]; // colonne I
+      if (licenseExpiresAtRaw) {
+        const licenseExpiresAt = new Date(licenseExpiresAtRaw);
+        if (now < licenseExpiresAt) return out({ active:true, status:"active", expiresAt: licenseExpiresAt.toISOString() });
+        return out({ active:false, status:"active", raison:"licence_expiree", expiresAt: licenseExpiresAt.toISOString() });
+      }
+      return out({ active:true, status:"active" }); // pas de date = licence permanente
+    }
+
+    const trialExpiresAt = new Date(data[i][3]);
+    if (now < trialExpiresAt) return out({ active:true, status:"trial", trialExpiresAt: trialExpiresAt.toISOString() });
+    return out({ active:false, status:"trial", raison:"essai_expire", trialExpiresAt: trialExpiresAt.toISOString() });
+  }
+
+  // Nouveau poste : enregistrement automatique de l'essai.
+  const trialExpiresAt = new Date(now.getTime() + TRIAL_HEURES * 3600000);
+  sheet.appendRow([machineId, now, now, trialExpiresAt, "trial", "", "", ""]);
+  return out({ active:true, status:"trial", trialExpiresAt: trialExpiresAt.toISOString() });
+}
+
+// ── ACTIVATE : un clic dans l'outil admin, aucun code. Clé admin requise. ──
+// p.days : durée d'activation en jours (0 ou absent = licence permanente).
+function doActivate_(sheet, p) {
+  if (p.key !== ADMIN_KEY) return out({ success:false, message:"Non autorisé (clé admin incorrecte)." });
+  const machineId = (p.machineId || "").trim().toUpperCase();
+  const jours = parseInt(p.days, 10) || 0;
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if ((data[i][0]||"").toString().trim().toUpperCase() === machineId) {
+      const rowNum = i + 1;
+      sheet.getRange(rowNum, 5).setValue("active");
+      sheet.getRange(rowNum, 7).setValue(new Date());
+      if (p.client) sheet.getRange(rowNum, 6).setValue(p.client);
+      sheet.getRange(rowNum, 9).setValue(jours > 0 ? new Date(Date.now() + jours * 86400000) : "");
+      return out({ success: true });
+    }
+  }
+  return out({ success:false, message:"Identifiant Machine introuvable." });
+}
+
+// ── REVOKE / RÉACTIVER (status=active). Clé admin requise. ──
+function doRevoke_(sheet, p) {
+  if (p.key !== ADMIN_KEY) return out({ success:false, message:"Non autorisé (clé admin incorrecte)." });
+  const machineId = (p.machineId || "").trim().toUpperCase();
+  const newStatus = p.status || "revoked";
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if ((data[i][0]||"").toString().trim().toUpperCase() === machineId) {
+      sheet.getRange(i + 1, 5).setValue(newStatus);
+      return out({ success: true });
+    }
+  }
+  return out({ success:false, message:"Identifiant Machine introuvable." });
+}
+
+// ── LIST : tous les postes, pour le tableau de l'outil admin. Clé admin requise. ──
+function doList_(sheet, p) {
+  if (p.key !== ADMIN_KEY) return out({ success:false, message:"Non autorisé (clé admin incorrecte)." });
+  const data = sheet.getDataRange().getValues();
+  const rows = [];
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (!r[0]) continue;
+    rows.push({
+      machineId: r[0], firstSeen: toIso_(r[1]), lastSeen: toIso_(r[2]),
+      trialExpiresAt: toIso_(r[3]), status: (r[4]||"trial").toString().toLowerCase(),
+      client: r[5] || "", activatedAt: toIso_(r[6]), note: r[7] || "",
+      licenseExpiresAt: toIso_(r[8]),
+    });
+  }
+  return out({ success:true, rows: rows });
+}
+
+function toIso_(v) {
+  if (!v) return null;
+  const d = (v instanceof Date) ? v : new Date(v);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function out(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+        </textarea>
+      </div>
+      <p class="hint" style="font-size:11px;color:var(--ink-soft);margin-bottom:14px">
+        Le bouton Copier colle automatiquement la clé d'administration actuellement saisie ci-dessus à la place de <code>__ADMIN_KEY__</code>.
+      </p>
+
+      <ol start="3" style="margin:0 0 14px 18px">
+        <li>Cliquez <b>Déployer → Nouveau déploiement</b></li>
+        <li>Type : <b>Application Web</b></li>
+        <li>Exécuter en tant que : <b>Moi</b></li>
+        <li>Qui a accès : <b>Tout le monde</b> (nécessaire pour que HydroPuits puisse s'enregistrer)</li>
+        <li>Cliquez <b>Déployer</b> → autorisez les permissions demandées</li>
+        <li>Copiez l'URL affichée (commence par <code>https://script.google.com/macros/s/</code>) et collez-la dans le champ <b>URL Google Apps Script</b> en haut de cette page</li>
+      </ol>
+
+      <b>Étape 4 — Configurer chaque copie de HydroPuits distribuée</b>
+      <ol style="margin:8px 0 14px 18px">
+        <li>Dans le projet HydroPuits, ouvrez le fichier <code>license-config.json</code> (à la racine) et vérifiez que <code>licenseServerUrl</code> contient bien la même URL que ci-dessus</li>
+        <li>Ce fichier fait partie des sources livrées à chaque client (embarqué dans l'archive .asar Electron) — la même URL est utilisée pour tous les postes, seul l'Identifiant Machine change</li>
+      </ol>
+
+      <div class="info">
+        ✓ Une fois configuré : chaque démarrage de HydroPuits (et chaque contrôle périodique, toutes les 60s)
+        s'enregistre/se vérifie auprès de votre Google Sheet. Si vous modifiez le code du script après un premier
+        déploiement, utilisez <b>Déployer → Gérer les déploiements → ✏️ → Nouvelle version</b> pour que les
+        changements prennent effet (l'URL reste la même). En cas de coupure réseau, un poste déjà <b>activé</b>
+        garde l'accès <b>jusqu'à 7 jours</b> depuis sa dernière vérification réussie, puis se bloque
+        automatiquement si le serveur reste injoignable. Un poste en <b>essai</b> continue de décompter
+        localement en cas de coupure réseau (redevient autoritaire dès que le serveur répond).
+      </div>
+
+      <div class="warn">
+        ⚠️ <b>Changement de modèle :</b> ce script remplace l'ancien système à codes d'activation
+        (<code>action=verify/add</code> sur la feuille de calcul "code/machineId/client/days/status"). Si vous
+        avez déjà distribué des codes à des clients avec l'ancienne version, ce nouveau script ne les reconnaît
+        plus — contactez ces clients pour les faire passer sur ce nouveau modèle (ils réapparaîtront
+        automatiquement ici dès leur prochain lancement, en essai ou à activer directement).
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const CFG_KEY = "gradex_lic_cfg_v2";
+// Volontairement VIDES (voir avertissement de sécurité en tête de page) :
+// déployez votre propre script + choisissez votre propre clé avant de
+// distribuer HydroPuits.
+const DEFAULT_GS_URL = "https://script.google.com/macros/s/AKfycbyk1pr-0uaH5EUe9bBuoqJN6fTp4ZBxtEMJjLNBxw7U0Sc5vfz_f_R0fI9W_lQwKYZknw/exec";
+// La clé n'est PAS mise ici : ce fichier est sur un dépôt public GitHub Pages.
+// Saisissez-la manuellement dans le champ "Clé d'administration" ci-dessus —
+// elle est alors sauvegardée uniquement dans le navigateur (localStorage),
+// jamais sur GitHub.
+const DEFAULT_ADMIN_KEY = "";
+let cfg = { gsUrl:"", adminKey:"" };
+let rows = [];
+
+// ── Config ────────────────────────────────────────────────────
+function loadConfig() {
+  try { cfg = JSON.parse(localStorage.getItem(CFG_KEY)) || null; } catch { cfg = null; }
+  if (!cfg) cfg = { gsUrl: DEFAULT_GS_URL, adminKey: DEFAULT_ADMIN_KEY };
+  document.getElementById("gsUrl").value = cfg.gsUrl || "";
+  document.getElementById("adminKey").value = cfg.adminKey || "";
+}
+function saveConfig() {
+  cfg.gsUrl = document.getElementById("gsUrl").value.trim();
+  cfg.adminKey = document.getElementById("adminKey").value.trim();
+  localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
+}
+
+// ── Liste des postes ────────────────────────────────────────────
+async function refreshList() {
+  const url = document.getElementById("gsUrl").value.trim();
+  const key = document.getElementById("adminKey").value.trim();
+  if (!url || !url.includes("script.google.com")) { showToast("Configurez d'abord l'URL Google Apps Script."); return; }
+  if (!key) { showToast("Configurez d'abord la clé d'administration."); return; }
+  document.getElementById("tableWrap").innerHTML = '<div class="empty">Chargement…</div>';
+  try {
+    const r = await fetch(url + "?action=list&key=" + encodeURIComponent(key), { cache:"no-store" });
+    const d = await r.json();
+    if (d.success === false) { document.getElementById("tableWrap").innerHTML = '<div class="err" style="margin:14px">' + esc(d.message||"Erreur") + '</div>'; return; }
+    rows = d.rows || [];
+    renderTable();
+    updateStats();
+  } catch (e) {
+    document.getElementById("tableWrap").innerHTML = '<div class="err" style="margin:14px">Impossible de joindre Google Sheets — vérifiez l\'URL et votre connexion.</div>';
+  }
+}
+
+function statusInfo(row) {
+  const now = new Date();
+  if (row.status === "revoked") return { key:"revoked", label:"⛔ Révoqué", cls:"b-rev", pending:false };
+  if (row.status === "active") {
+    const lexp = row.licenseExpiresAt ? new Date(row.licenseExpiresAt) : null;
+    if (!lexp) return { key:"active", label:"✅ Actif — permanent", cls:"b-act", pending:false };
+    if (now < lexp) {
+      const dLeft = Math.ceil((lexp - now) / 86400000);
+      return { key:"active", label:"✅ Actif — " + dLeft + " j restant(s)", cls:"b-act", pending:false };
+    }
+    return { key:"active_expired", label:"⚠️ Licence expirée le " + lexp.toLocaleDateString("fr-FR"), cls:"b-pend", pending:true };
+  }
+  // trial
+  const exp = row.trialExpiresAt ? new Date(row.trialExpiresAt) : null;
+  if (exp && now < exp) {
+    const hLeft = (exp - now) / 3600000;
+    const txt = hLeft >= 24 ? Math.ceil(hLeft/24) + " j restant(s)" : Math.max(1, Math.round(hLeft)) + " h restante(s)";
+    return { key:"trial", label:"⏱ Essai — " + txt, cls:"b-trial", pending:false };
+  }
+  return { key:"pending", label:"⏳ En attente de paiement", cls:"b-pend", pending:true };
+}
+
+// Options de durée d'activation proposées dans l'outil admin (jours ; 0 = permanent).
+const DUREES_LICENCE = [
+  { jours: 30,  label: "1 mois" },
+  { jours: 180, label: "6 mois" },
+  { jours: 365, label: "1 an" },
+  { jours: 0,   label: "Permanent" },
+  { jours: -1,  label: "Personnaliser…" }, // -1 = déclenche le champ "jours" ci-contre
+];
+
+function renderTable() {
+  const wrap = document.getElementById("tableWrap");
+  const onlyPending = document.getElementById("onlyPending").checked;
+  let list = rows.map(r => ({ ...r, _st: statusInfo(r) }));
+  if (onlyPending) list = list.filter(r => r._st.pending);
+  // En attente de paiement (+ licences expirées) en premier, puis essai (le plus proche d'expirer d'abord), puis actifs, puis révoqués.
+  const ordre = { pending:0, active_expired:0, trial:1, active:2, revoked:3 };
+  list.sort((a,b) => (ordre[a._st.key]-ordre[b._st.key]) || (new Date(b.lastSeen||0) - new Date(a.lastSeen||0)));
+
+  document.getElementById("jCount").textContent = list.length;
+  if (!list.length) {
+    wrap.innerHTML = '<div class="empty">' + (onlyPending ? "Aucun poste en attente de paiement." : "Aucun poste enregistré pour l'instant.") + '</div>';
+    return;
+  }
+
+  let html = '<div class="tbl-wrap"><table><thead><tr>' +
+    '<th>Identifiant Machine</th><th>1ère connexion</th><th>Dernière connexion</th><th>Statut</th><th>Client / Note</th><th>Actions</th>' +
+    '</tr></thead><tbody>';
+
+  list.forEach(r => {
+    const st = r._st;
+    const activerLabel = (st.key === "active") ? "🔄 Renouveler" : "✅ Activer";
+    const durOptions = DUREES_LICENCE.map(d =>
+      '<option value="' + d.jours + '"' + (d.jours === 365 ? ' selected' : '') + '>' + d.label + '</option>'
+    ).join('');
+    html += '<tr class="' + (st.pending ? 'row-pending' : '') + '">' +
+      '<td class="mono" style="font-weight:700;color:var(--water-dark)">' + esc(r.machineId) + '</td>' +
+      '<td style="white-space:nowrap;font-size:10px">' + fmtDate(r.firstSeen) + '</td>' +
+      '<td style="white-space:nowrap;font-size:10px">' + fmtDate(r.lastSeen) + '</td>' +
+      '<td><span class="badge2 ' + st.cls + '">' + st.label + '</span></td>' +
+      '<td style="font-size:10.5px;color:var(--ink-soft);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.client||r.note||"") + '</td>' +
+      '<td><div class="actions">' +
+        '<select class="dur-sel" id="dur-' + esc(r.machineId) + '" onchange="onDureeChange(\'' + esc(r.machineId) + '\')" ' +
+          'style="font-size:10.5px;padding:3px 4px;border:1px solid var(--line-strong);border-radius:3px;max-width:112px" ' +
+          'title="Durée d\'activation">' + durOptions + '</select>' +
+        '<input type="number" min="1" id="jours-' + esc(r.machineId) + '" placeholder="jours" ' +
+          'style="display:none;width:56px;font-size:10.5px;padding:3px 4px;border:1px solid var(--line-strong);border-radius:3px" />' +
+        '<button class="btn btn-ok btn-sm" onclick="doActivateRow(\'' + esc(r.machineId) + '\')">' + activerLabel + '</button>' +
+        (st.key !== "revoked" ? '<button class="btn btn-danger btn-sm" onclick="doRevokeRow(\'' + esc(r.machineId) + '\')">⛔ Révoquer</button>' : '') +
+        '<button class="btn btn-ghost btn-sm" onclick="copyId(\'' + esc(r.machineId) + '\')" title="Copier l\'identifiant">📋</button>' +
+      '</div></td></tr>';
+  });
+  html += '</tbody></table></div>';
+  wrap.innerHTML = html;
+}
+
+function fmtDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? "—" : d.toLocaleDateString("fr-FR") + " " + d.toLocaleTimeString("fr-FR", {hour:"2-digit",minute:"2-digit"});
+}
+
+async function callAction(action, machineId, extra) {
+  const url = document.getElementById("gsUrl").value.trim();
+  const key = document.getElementById("adminKey").value.trim();
+  const p = new URLSearchParams(Object.assign({ action:action, machineId:machineId, key:key }, extra||{}));
+  const r = await fetch(url + "?" + p, { cache:"no-store" });
+  return r.json();
+}
+
+function onDureeChange(machineId) {
+  const sel = document.getElementById("dur-" + machineId);
+  const inp = document.getElementById("jours-" + machineId);
+  if (!sel || !inp) return;
+  inp.style.display = (sel.value === "-1") ? "inline-block" : "none";
+}
+
+async function doActivateRow(machineId) {
+  const sel = document.getElementById("dur-" + machineId);
+  let jours = sel ? parseInt(sel.value, 10) : 365;
+  if (jours === -1) {
+    const inp = document.getElementById("jours-" + machineId);
+    jours = parseInt(inp && inp.value, 10);
+    if (!jours || jours < 1) { showToast("Indiquez un nombre de jours personnalisé valide (≥ 1)."); return; }
+  }
+  const d = await callAction("activate", machineId, { days: jours });
+  if (d.success) {
+    const dureeTxt = jours > 0 ? (jours + " jour(s)") : "permanent";
+    showToast("Poste activé (" + dureeTxt + ") — débloqué automatiquement sous 60s côté client.");
+    refreshList();
+  } else showToast(d.message || "Échec de l'activation.");
+}
+async function doRevokeRow(machineId) {
+  const d = await callAction("revoke", machineId, { status:"revoked" });
+  if (d.success) { showToast("Poste révoqué."); refreshList(); }
+  else showToast(d.message || "Échec de la révocation.");
+}
+function copyId(machineId) { navigator.clipboard.writeText(machineId).then(()=>showToast("Identifiant copié")); }
+
+// ── Stats ─────────────────────────────────────────────────────
+function updateStats() {
+  let trial=0, pending=0, active=0;
+  rows.forEach(r => {
+    const st = statusInfo(r).key;
+    if (st === "trial") trial++;
+    else if (st === "pending" || st === "active_expired") pending++;
+    else if (st === "active") active++;
+  });
+  document.getElementById("sTotal").textContent = rows.length;
+  document.getElementById("sTrial").textContent = trial;
+  document.getElementById("sPending").textContent = pending;
+  document.getElementById("sActive").textContent = active;
+}
+
+// ── UI ────────────────────────────────────────────────────────
+function esc(t){const d=document.createElement("div");d.textContent=t==null?"":String(t);return d.innerHTML;}
+function showToast(m){
+  document.querySelectorAll(".toast").forEach(e=>e.remove());
+  const d=document.createElement("div");d.className="toast";d.textContent=m;
+  document.body.appendChild(d);setTimeout(()=>d.remove(),3000);
+}
+function copyScript(){
+  const key = document.getElementById("adminKey").value.trim() || "__ADMIN_KEY__";
+  const script = document.getElementById("gsCode").value.replace("__ADMIN_KEY__", key);
+  navigator.clipboard.writeText(script).then(()=>showToast("Script copié" + (key==="__ADMIN_KEY__" ? " (pensez à définir votre clé admin ci-dessus)" : " (avec votre clé admin)") + " !"));
+}
+
+// ── Init ──────────────────────────────────────────────────────
+loadConfig();
+if (cfg.gsUrl && cfg.adminKey) refreshList();
+</script>
+</body>
+</html>

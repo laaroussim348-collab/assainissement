@@ -1,0 +1,6 @@
+node_modules/
+build/
+dist/
+.activation-local.json
+.cache-donnees/
+*.log
