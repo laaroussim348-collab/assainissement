@@ -23,6 +23,22 @@ import { casI18n } from './unit-i18n.test.js';
 import { casGeodesie } from './unit-geodesie.test.js';
 import { casPolygone } from './unit-polygone.test.js';
 import { casImportTerrain } from './unit-import-terrain.test.js';
+import { casElevationClient } from './unit-elevation-client.test.js';
+import { casOverpassClient } from './unit-overpass-client.test.js';
+import { casNasaPowerClient } from './unit-nasa-power-client.test.js';
+import { casSoilGridsClient } from './unit-soil-grids-client.test.js';
+import { casOpenTopographyClient } from './unit-open-topography-client.test.js';
+import { casSourcesDonnees } from './unit-sources-donnees.test.js';
+import { casCacheDonnees } from './unit-cache-donnees.test.js';
+import { casGrilleLocale } from './unit-grille-locale.test.js';
+import { casGrilleMnt } from './unit-grille-mnt.test.js';
+import { casDerivesMnt } from './unit-derives-mnt.test.js';
+import { casHydrologieGrille } from './unit-hydrologie-grille.test.js';
+import { casGeometrieLigneaire } from './unit-geometrie-ligneaire.test.js';
+import { casAhp } from './unit-ahp.test.js';
+import { casReclassement } from './unit-reclassement.test.js';
+import { casFacteurs } from './unit-facteurs.test.js';
+import { casFavorabilite } from './unit-favorabilite.test.js';
 
 // Tolérance par défaut sur les comparaisons numériques, en pourcentage.
 // Valeur reprise d'HydroCrue (tests/run-tests.js) : couvre les écarts
@@ -36,6 +52,22 @@ const SUITES = [
   ['Géodésie — ellipsoïde WGS84 (Karney)', casGeodesie],
   ['Polygone — validation et normalisation', casPolygone],
   ['Import — fichier de sommets', casImportTerrain],
+  ['Source — Open-Meteo Elevation', casElevationClient],
+  ['Source — Overpass API (OSM)', casOverpassClient],
+  ['Source — NASA POWER', casNasaPowerClient],
+  ['Source — SoilGrids (ISRIC)', casSoilGridsClient],
+  ['Source — OpenTopography', casOpenTopographyClient],
+  ['Registre des sources de données', casSourcesDonnees],
+  ['Cache disque des données', casCacheDonnees],
+  ['Grille locale (projection métrique)', casGrilleLocale],
+  ['Grille de calcul + interpolation MNT', casGrilleMnt],
+  ['Dérivées MNT — pente et courbure', casDerivesMnt],
+  ['Hydrologie — remplissage, D8, TWI', casHydrologieGrille],
+  ['Géométrie linéaire — densité et distance', casGeometrieLigneaire],
+  ['AHP — poids, cohérence (CI/CR), renormalisation', casAhp],
+  ['Reclassement — seuils, bornes, quantiles', casReclassement],
+  ['Facteurs — assemblage des 8 facteurs depuis les sources', casFacteurs],
+  ['Favorabilité — combinaison pondérée et classement des points', casFavorabilite],
 ];
 
 let total = 0;

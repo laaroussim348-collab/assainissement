@@ -14,11 +14,9 @@
 //  AHP sur données satellitaires ≈ 90 m), jamais une probabilité de
 //  trouver de l'eau ni un débit prévu. Voir src/Avertissement.js.
 //
-//  ÉTAT D'AVANCEMENT — étape 2 du plan de construction : squelette.
-//  Les 6 onglets existent et le projet .hpu se sauvegarde/ouvre, mais
-//  leur contenu métier arrive aux étapes suivantes (3 : saisie du
-//  terrain ; 4 : sources de données ; 5 : facteurs ; 6 : moteur AHP ;
-//  7 : carte de favorabilité ; 8 : sensibilité et rapport).
+//  ÉTAT D'AVANCEMENT — étape 7 du plan de construction. Terrain,
+//  Données, Critères et Résultats sont branchés ; Sensibilité et
+//  Rapport (étape 8) restent en chantier — voir README.md.
 //  Licence — voir src/licence/LicenceGate.js et src/services/*.
 // ============================================================
 
@@ -27,6 +25,9 @@ import { useI18n } from "./useI18n";
 import LicenceGate from "./licence/LicenceGate";
 import Avertissement from "./Avertissement";
 import TerrainTab from "./tabs/TerrainTab";
+import DonneesTab from "./tabs/DonneesTab";
+import CriteresTab from "./tabs/CriteresTab";
+import ResultatsTab from "./tabs/ResultatsTab";
 import {
   C_BLUE,
   TBtn, TSep, MItem, NoData,
@@ -402,9 +403,11 @@ function ApplicationPrincipale() {
             lorsque le contenu arrivera. */}
         {ONGLETS_RESULTAT.includes(onglet) && <Avertissement />}
 
-        {onglet === "terrain" ? (
-          <TerrainTab etat={etat} majEtat={majEtat} afficherToast={afficherToast} />
-        ) : (
+        {onglet === "terrain" && <TerrainTab etat={etat} majEtat={majEtat} afficherToast={afficherToast} />}
+        {onglet === "donnees" && <DonneesTab etat={etat} majEtat={majEtat} afficherToast={afficherToast} />}
+        {onglet === "criteres" && <CriteresTab etat={etat} majEtat={majEtat} afficherToast={afficherToast} />}
+        {onglet === "resultats" && <ResultatsTab etat={etat} majEtat={majEtat} afficherToast={afficherToast} />}
+        {!["terrain", "donnees", "criteres", "resultats"].includes(onglet) && (
           <>
             <NoData title={VIDES[onglet][0]} hint={VIDES[onglet][1]} />
             <p style={{ textAlign: "center", fontSize: 11, color: "#aaa", marginTop: -30 }}>
