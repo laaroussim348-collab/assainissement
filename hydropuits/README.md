@@ -31,7 +31,7 @@ expliquant le *pourquoi*), même habillage, même système de licence.
 | 4 | Registre des sources + téléchargement MNT + cache + clés | ✅ |
 | 5 | Facteurs (pente, TWI, densités, courbure…) | ✅ |
 | 6 | Moteur AHP + ratio de cohérence + reclassement | ✅ |
-| 7 | Carte de favorabilité + classement des emplacements | ✅ (moteur de calcul ; onglets Critères/Résultats à faire — voir plus bas) |
+| 7 | Carte de favorabilité + classement des emplacements | ✅ |
 | 8 | Analyse de sensibilité + rapport + export PNG | à faire |
 | 9 | README complet + build `npm run dist` | à faire |
 
@@ -327,18 +327,39 @@ d'architecture :
 | `favorabilite.js` | Reclasse les 8 grilles (via `reclassement.js`), les combine par les poids AHP (`ahp.js`) en un score 1..5, classe les N meilleurs points |
 | `carteBase.js` | Fond de carte (Esri World Imagery + CARTO, `ZOOM_MAX=17`) extrait de `CarteTerrain.js` pour être PARTAGÉ, pas recopié, par la future carte de favorabilité — §2/§8 imposent de ne jamais faire diverger le fond de carte |
 
-**Ce qui manque encore à cette étape, explicitement** : les onglets
-**Critères** (activation des facteurs, seuils éditables, matrice AHP
-éditable avec CR en direct) et **Résultats** (carte de favorabilité,
-liste classée) du §6 n'existent pas encore — seul le MOTEUR DE CALCUL
-qu'ils devront afficher est construit et testé à cette étape. Raison de
-ce découpage : brancher ces deux onglets suppose aussi de récupérer les
-données déjà téléchargées à l'étape 4 (qui ne sont PAS conservées dans
-l'état du projet, voir `DonneesTab.js` — seules leurs métadonnées le
-sont) et de les faire transiter par ce nouveau pipeline en conditions
-réelles, ce qui est un morceau de travail à part entière, greffé sur
-l'étape 8 (qui a de toute façon besoin d'un onglet Résultats pour
-afficher la sensibilité et le rapport).
+### Onglets Critères et Résultats, et le pipeline qui les alimente
+
+Trois fichiers de plus branchent le moteur ci-dessus sur l'interface :
+
+| Fichier | Contenu |
+|---|---|
+| `services/pipelineClient.js` | Redemande les 4 sources déjà téléchargées via EXACTEMENT la même API que `DonneesTab.js` (étape 4) — réponse quasi instantanée depuis le cache serveur si rien n'a changé — puis appelle `facteurs.construireFacteurs()` |
+| `tabs/facteursCriteres.js` | Ordre de priorité PARTAGÉ entre les deux onglets pour « quel seuil/sens/poids effectif utiliser » (réglage utilisateur > défaut absolu défendable (pente) > quantiles calculés sur les données réelles > `null`) — écrit une seule fois pour que les deux onglets ne puissent jamais se contredire |
+| `tabs/CriteresTab.js` | Active/désactive les 8 facteurs, seuils éditables (pré-remplis par les quantiles calculés dès que les données sont là), matrice de comparaisons AHP (28 paires, échelle de Saaty) avec poids et CR recalculés EN DIRECT à chaque changement |
+| `tabs/ResultatsTab.js` + `CarteFavorabilite.js` | Lance le pipeline, reclasse, combine, classe les meilleurs points, et affiche une carte (fond partagé via `carteBase.js`) colorée par classe + la liste classée |
+
+**Pourquoi les données de l'étape 4 sont redemandées plutôt que réutilisées
+telles quelles** : `DonneesTab.js` ne conserve QUE les métadonnées d'un
+téléchargement dans l'état du projet, pas les données elles-mêmes (voir
+son en-tête) — celles-ci restent dans le cache disque du serveur, tenu
+par le contour du terrain. `pipelineClient.js` les redemande via la même
+API, ce qui répond quasi instantanément depuis ce cache si le contour
+n'a pas changé (§3.3 : « re-jouable hors ligne »), sans dupliquer la
+logique de téléchargement.
+
+**Vérifié de bout en bout** (Playwright, terrain saisi au clavier) :
+- Sans aucune source disponible (réseau sortant bloqué dans cet
+  environnement de développement — même caveat que pour toutes les
+  autres sources de ce projet) : chaque échec est nommé individuellement,
+  tous les facteurs grillés se désactivent avec l'avertissement
+  `facAvtMntManquant`, aucun plantage, aucun résultat qui aurait l'air
+  valide.
+- Avec les 4 sources pré-remplies dans le cache serveur (script de test,
+  MNT synthétique avec un creux central, cours d'eau et faille
+  traversant le terrain) : seuils calculés par quantiles affichés dans
+  Critères, CR = 0,079 (matrice par défaut), carte de favorabilité
+  colorée cohérente avec le creux synthétique (centre plus favorable),
+  liste des 10 meilleurs points correctement classée et géoréférencée.
 
 ### Pourquoi la lithologie et la pluviométrie sont des valeurs UNIQUES, pas des grilles
 
