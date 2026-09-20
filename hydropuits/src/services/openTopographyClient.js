@@ -83,6 +83,19 @@ export function buildOpenTopographyUrl(bbox, cle, typeMnt = 'copernicus-30') {
  *   NODATA_value <réel>     valeur signalant une absence de donnée
  *   <nrows lignes de ncols nombres séparés par des espaces, du NORD vers le SUD>
  *
+ * ⚠️ VARIANTE RÉELLE ACCEPTÉE : la spécification Esri du format autorise
+ * `XLLCENTER`/`YLLCENTER` (coordonnée du CENTRE de la cellule en bas à
+ * gauche) comme alternative à `XLLCORNER`/`YLLCORNER` (coordonnée du
+ * COIN) — les deux formes sont documentées et effectivement produites
+ * par différents générateurs de fichiers .asc (dont GDAL, selon la
+ * source). Un échec réel de ce parseur (20/09/2026 : « en-tête ASCII
+ * Grid incomplet — nodata_value manquant ») a montré que la boucle de
+ * lecture de l'en-tête, qui ne reconnaissait QUE *corner, abandonnait
+ * dès la 3ᵉ ligne face à `xllcenter` — les lignes cellsize/NODATA_value,
+ * pourtant présentes, n'étaient donc jamais lues. Les deux formes sont
+ * désormais acceptées ; `*center` est convertie en coin par
+ * `- cellsize/2` (relation exacte entre les deux conventions).
+ *
  * @returns {{
  *   ncols:number, nrows:number, xllcorner:number, yllcorner:number,
  *   cellsize:number, nodata:number, valeurs: Float64Array,
@@ -105,20 +118,43 @@ export function parseAsciiGrid(texte) {
 
   const lignes = texte.split(/\r\n|\r|\n/);
   const entete = {};
-  let ligneDepart = 0;
-  const CLES_ENTETE = ['ncols', 'nrows', 'xllcorner', 'yllcorner', 'cellsize', 'nodata_value'];
+  let ligneDepart = lignes.length;
+  // xllcorner/yllcorner ET xllcenter/yllcenter reconnues à la lecture —
+  // voir la réserve « VARIANTE RÉELLE ACCEPTÉE » ci-dessus. Les lignes
+  // vides sont ignorées et l'ordre des champs n'est PAS supposé fixe
+  // (seul le premier des 6 à 8 champs de tête EST garanti être une
+  // ligne « clé valeur » — imposer un ordre ou une contiguïté stricte
+  // romprait sur un en-tête par ailleurs valide mais légèrement
+  // réagencé) : le corps de la grille commence à la première ligne qui
+  // n'est PAS une entrée d'en-tête reconnue, jamais avant.
+  const CLES_ENTETE = ['ncols', 'nrows', 'xllcorner', 'yllcorner', 'xllcenter', 'yllcenter', 'cellsize', 'nodata_value'];
   for (let i = 0; i < lignes.length; i++) {
-    const parts = lignes[i].trim().split(/\s+/);
-    if (parts.length !== 2 || !CLES_ENTETE.includes(parts[0].toLowerCase())) { ligneDepart = i; break; }
-    entete[parts[0].toLowerCase()] = Number(parts[1]);
+    const ligne = lignes[i].trim();
+    if (ligne === '') continue;
+    const parts = ligne.split(/\s+/);
+    if (parts.length === 2 && CLES_ENTETE.includes(parts[0].toLowerCase()) && Number.isFinite(Number(parts[1]))) {
+      entete[parts[0].toLowerCase()] = Number(parts[1]);
+      continue;
+    }
+    ligneDepart = i;
+    break;
   }
-  for (const cle of CLES_ENTETE) {
+  const CLES_REQUISES = ['ncols', 'nrows', 'cellsize', 'nodata_value'];
+  for (const cle of CLES_REQUISES) {
     if (!Number.isFinite(entete[cle])) {
       throw new Error(`parseAsciiGrid : en-tête ASCII Grid incomplet — '${cle}' manquant ou non numérique.`);
     }
   }
+  if (!Number.isFinite(entete.xllcorner) && !Number.isFinite(entete.xllcenter)) {
+    throw new Error("parseAsciiGrid : en-tête ASCII Grid incomplet — 'xllcorner'/'xllcenter' manquant ou non numérique.");
+  }
+  if (!Number.isFinite(entete.yllcorner) && !Number.isFinite(entete.yllcenter)) {
+    throw new Error("parseAsciiGrid : en-tête ASCII Grid incomplet — 'yllcorner'/'yllcenter' manquant ou non numérique.");
+  }
 
-  const { ncols, nrows, xllcorner, yllcorner, cellsize } = entete;
+  const { ncols, nrows, cellsize } = entete;
+  const xllcorner = Number.isFinite(entete.xllcorner) ? entete.xllcorner : entete.xllcenter - cellsize / 2;
+  const yllcorner = Number.isFinite(entete.yllcorner) ? entete.yllcorner : entete.yllcenter - cellsize / 2;
   const nodata = entete.nodata_value;
   const valeurs = new Float64Array(ncols * nrows);
   let idx = 0;

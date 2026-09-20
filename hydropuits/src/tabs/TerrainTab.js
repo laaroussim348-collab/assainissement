@@ -18,34 +18,37 @@ import { useMemo, useRef, useState } from 'react';
 import { useI18n } from '../useI18n';
 import CarteTerrain from '../CarteTerrain';
 import { validerPolygone } from '../calculations/polygone.js';
+import {
+  versWgs84, depuisWgs84, SYSTEMES_IMPLEMENTES, FUSEAUX_UTM_MAROC,
+} from '../calculations/coordonnees.js';
 import { lireCsv, lireXlsx } from '../services/importTerrain.js';
 import {
   C_BLUE, C_TEAL, C_AMBER, C_RED, C_BORDER, C_HEADER,
-  TH, TD, Panel, Field, Alert, f6,
+  TH, TD, Panel, Field, Select, Alert, f6,
 } from '../ui';
 
 /**
  * Systèmes de coordonnées proposés à la saisie et à l'import.
  *
- * ⚠️ ÉTAT : seul le WGS84 est opérationnel. Les sept autres systèmes
- * (UTM WGS84, les quatre zones Merchich, UTM Point 58, UTM Nord Sahara
- * 59) sont ceux de src/calculations/coordonnees.js de HydroCrue, que le
- * cahier des charges §2.2 impose de réutiliser SANS LE MODIFIER et qui
- * n'a pas encore été fourni. Ils apparaissent donc désactivés, avec la
- * raison affichée — plutôt que d'être masqués (l'utilisateur croirait
- * qu'ils n'existent pas) ou, pire, réimplémentés à la hâte (ils
- * divergeraient de HydroCrue, qui est la référence).
+ * ⚠️ ÉTAT : `utm-point58` et `utm-nordsahara59` restent désactivés —
+ * ce sont deux datums historiques propres au Sahara occidental dont les
+ * paramètres de changement de datum vers WGS84 n'ont pas pu être
+ * vérifiés avec la même rigueur que les 6 autres systèmes (voir
+ * calculations/coordonnees.js et README, « Limites connues »). Les 6
+ * autres (WGS84, UTM WGS84, les 4 zones Lambert Merchich) sont
+ * opérationnels — paramètres vérifiés le 20/09/2026 sur le registre
+ * EPSG (voir coordonnees.js pour le détail et les sources).
  */
 const SYSTEMES = [
-  { id: 'wgs84', cle: 'sysWgs84', disponible: true },
-  { id: 'utm-wgs84', cle: 'sysUtmWgs84', disponible: false },
-  { id: 'merchich-nord', cle: 'sysMerchichNord', disponible: false },
-  { id: 'merchich-sud', cle: 'sysMerchichSud', disponible: false },
-  { id: 'merchich-sahara-nord', cle: 'sysMerchichSaharaNord', disponible: false },
-  { id: 'merchich-sahara-sud', cle: 'sysMerchichSaharaSud', disponible: false },
-  { id: 'utm-point58', cle: 'sysUtmPoint58', disponible: false },
-  { id: 'utm-nordsahara59', cle: 'sysUtmNordSahara59', disponible: false },
-];
+  { id: 'wgs84', cle: 'sysWgs84' },
+  { id: 'utm-wgs84', cle: 'sysUtmWgs84' },
+  { id: 'merchich-nord', cle: 'sysMerchichNord' },
+  { id: 'merchich-sud', cle: 'sysMerchichSud' },
+  { id: 'merchich-sahara-nord', cle: 'sysMerchichSaharaNord' },
+  { id: 'merchich-sahara-sud', cle: 'sysMerchichSaharaSud' },
+  { id: 'utm-point58', cle: 'sysUtmPoint58' },
+  { id: 'utm-nordsahara59', cle: 'sysUtmNordSahara59' },
+].map((s) => ({ ...s, disponible: SYSTEMES_IMPLEMENTES.includes(s.id) }));
 
 const MODES = [
   { id: 'carte', icone: 'map-pin', cle: 'terrainModeCarte' },
@@ -61,6 +64,14 @@ export default function TerrainTab({ etat, majEtat, afficherToast }) {
   const fichierRef = useRef(null);
 
   const sommets = etat.sommets || [];
+  const idSysteme = etat.systemeCoordonnees || 'wgs84';
+  // Fuseau UTM : nécessaire pour interpréter un couple (Easting,
+  // Northing) — un Easting seul ne dit pas dans quel fuseau il a été
+  // mesuré. Choix par défaut : 29 (couvre Rabat/Casablanca/Marrakech,
+  // la bande la plus peuplée du Maroc), ajustable pour les autres
+  // régions (§3.2 — le Maroc s'étend sur les fuseaux 28 à 31).
+  const fuseauUtm = etat.fuseauUtm || 29;
+  const optionsSysteme = idSysteme === 'utm-wgs84' ? { fuseau: fuseauUtm, hemisphereNord: true } : {};
 
   // La validation complète est en O(n²) (détection des doublons) : on ne
   // la relance que quand les sommets changent réellement, pas à chaque
@@ -80,6 +91,49 @@ export default function TerrainTab({ etat, majEtat, afficherToast }) {
     const copie = [...sommets];
     copie[index] = { ...copie[index], [champ]: Number.isFinite(v) ? v : valeur };
     changerSommets(copie);
+  }
+
+  /**
+   * Coordonnées NATIVES (dans idSysteme) d'un sommet stocké en WGS84 —
+   * pour l'affichage de la table quand un système autre que WGS84 est
+   * choisi. `etat.sommets` reste TOUJOURS en WGS84 (§4 — c'est ce que
+   * lisent polygone.js, geodesie.js, grilleLocale.js et tout le reste
+   * du logiciel) : seule la SAISIE change de représentation, jamais le
+   * stockage.
+   */
+  function coordonneesNatives(sommet) {
+    if (idSysteme === 'wgs84') return { x: sommet.lon, y: sommet.lat };
+    try {
+      return depuisWgs84(idSysteme, sommet.lat, sommet.lon, optionsSysteme);
+    } catch {
+      return { x: NaN, y: NaN };
+    }
+  }
+
+  /**
+   * Modifie UN des deux champs natifs (x ou y) d'un sommet, en
+   * recombinant avec l'autre champ (inchangé, relu depuis le sommet
+   * actuel) avant de reconvertir en WGS84 pour le stockage — une
+   * conversion Lambert/UTM a besoin des DEUX coordonnées à la fois,
+   * contrairement à la saisie WGS84 directe (modifierSommet ci-dessus)
+   * où lat et lon sont indépendants.
+   */
+  function modifierSommetNatif(index, champ, valeurTexte) {
+    const v = parseFloat(String(valeurTexte).replace(',', '.'));
+    if (!Number.isFinite(v)) return; // saisie en cours (incomplète) : rien à convertir pour l'instant
+    const actuel = coordonneesNatives(sommets[index]);
+    const nouveauNatif = { ...actuel, [champ]: v };
+    try {
+      const { lat, lon } = versWgs84(idSysteme, nouveauNatif.x, nouveauNatif.y, optionsSysteme);
+      const copie = [...sommets];
+      copie[index] = { lat, lon };
+      changerSommets(copie);
+    } catch {
+      // Couple (x,y) pas encore exploitable (ex. l'autre champ est
+      // toujours NaN, premier sommet jamais saisi) : on n'écrit rien
+      // plutôt qu'une coordonnée fausse — l'utilisateur continue de
+      // remplir les deux champs.
+    }
   }
 
   function ajouterSommet() {
@@ -132,10 +186,15 @@ export default function TerrainTab({ etat, majEtat, afficherToast }) {
 
   function appliquerTerrainImporte(terrain) {
     // Le système de coordonnées choisi décide de l'interprétation de
-    // (x, y). Tant que coordonnees.js n'est pas fourni, seul le WGS84
-    // est proposé, et la convention est x = longitude, y = latitude —
-    // affichée dans l'aide de l'onglet pour lever toute ambiguïté.
-    const nouveaux = terrain.sommets.map(s => ({ lat: s.y, lon: s.x }));
+    // (x, y) : en WGS84, x = longitude, y = latitude directement (dit
+    // dans l'aide de l'onglet) ; dans tout autre système, (x, y) =
+    // (Easting/X, Northing/Y) natifs, convertis en WGS84 avant stockage
+    // (§4 — etat.sommets reste toujours en WGS84, voir
+    // coordonneesNatives() ci-dessus).
+    const nouveaux = terrain.sommets.map((s) => {
+      if (idSysteme === 'wgs84') return { lat: s.y, lon: s.x };
+      return versWgs84(idSysteme, s.x, s.y, optionsSysteme);
+    });
     majEtat({ sommets: nouveaux, nomTerrain: terrain.nom || etat.nomTerrain });
     setImportResultat(null);
     afficherToast?.(tp('terrainImporteToast', { nombre: nouveaux.length }));
@@ -165,7 +224,7 @@ export default function TerrainTab({ etat, majEtat, afficherToast }) {
             <label style={{ display: 'block', fontSize: 11, color: '#333', marginBottom: 2, fontWeight: 500 }}>
               {t('terrainSysteme')}
             </label>
-            <select value={etat.systemeCoordonnees || 'wgs84'}
+            <select value={idSysteme}
               onChange={e => majEtat({ systemeCoordonnees: e.target.value })}
               style={{ width: '100%', boxSizing: 'border-box', height: 24, padding: '0 4px',
                 border: `1px solid ${C_BORDER}`, borderRadius: 1, fontSize: 12, background: '#fff' }}>
@@ -176,8 +235,16 @@ export default function TerrainTab({ etat, majEtat, afficherToast }) {
               ))}
             </select>
           </div>
+          {idSysteme === 'utm-wgs84' && (
+            <div style={{ flex: '0 0 140px' }}>
+              <Select label={t('terrainFuseauUtm')} value={fuseauUtm}
+                onChange={(v) => majEtat({ fuseauUtm: Number(v) })}
+                options={FUSEAUX_UTM_MAROC.map((z) => ({ value: z, label: `${z}N` }))} />
+            </div>
+          )}
         </div>
         <Alert tone="info">{t('sysSeulWgs84')}</Alert>
+        {idSysteme.startsWith('merchich-') && <Alert tone="warn">{t('terrainPrecisionLambert')}</Alert>}
       </Panel>
 
       {/* ── Choix du mode de saisie ── */}
@@ -293,44 +360,54 @@ export default function TerrainTab({ etat, majEtat, afficherToast }) {
               <thead>
                 <tr>
                   <th style={{ ...TH, width: 50 }}>{t('terrainTabSommet')}</th>
-                  <th style={TH}>{t('terrainTabLat')}</th>
-                  <th style={TH}>{t('terrainTabLon')}</th>
+                  <th style={TH}>{idSysteme === 'wgs84' ? t('terrainTabLat') : t('terrainTabY')}</th>
+                  <th style={TH}>{idSysteme === 'wgs84' ? t('terrainTabLon') : t('terrainTabX')}</th>
                   <th style={TH}>{t('terrainTabWgs84')}</th>
                   <th style={{ ...TH, width: 60 }}>{t('terrainTabAction')}</th>
                 </tr>
               </thead>
               <tbody>
-                {sommets.map((s, i) => (
-                  <tr key={i}>
-                    <td style={{ ...TD, fontWeight: 700, color: C_BLUE }}>{i + 1}</td>
-                    <td style={TD}>
-                      <input type="text" value={s.lat} step="0.000001"
-                        onChange={e => modifierSommet(i, 'lat', e.target.value)}
-                        style={{ width: '100%', boxSizing: 'border-box', height: 22, padding: '0 4px',
-                          border: `1px solid ${C_BORDER}`, fontSize: 11.5, textAlign: 'right' }} />
-                    </td>
-                    <td style={TD}>
-                      <input type="text" value={s.lon} step="0.000001"
-                        onChange={e => modifierSommet(i, 'lon', e.target.value)}
-                        style={{ width: '100%', boxSizing: 'border-box', height: 22, padding: '0 4px',
-                          border: `1px solid ${C_BORDER}`, fontSize: 11.5, textAlign: 'right' }} />
-                    </td>
-                    {/* Conversion affichée en direct. En WGS84 elle est
-                        l'identité ; la colonne existe déjà pour que le
-                        branchement de coordonnees.js n'oblige pas à
-                        redessiner le tableau. */}
-                    <td style={{ ...TD, fontFamily: 'monospace', fontSize: 10.5, color: '#555' }}>
-                      {Number.isFinite(parseFloat(s.lat)) && Number.isFinite(parseFloat(s.lon))
-                        ? `${f6(parseFloat(s.lat))}, ${f6(parseFloat(s.lon))}`
-                        : <span style={{ color: C_RED }}>{t('terrainTabInvalide')}</span>}
-                    </td>
-                    <td style={TD}>
-                      <button onClick={() => supprimerSommet(i)} title={t('terrainSupprimerSommet')}
-                        style={{ padding: '1px 8px', fontSize: 11, cursor: 'pointer', background: '#fff',
-                          border: `1px solid ${C_BORDER}`, borderRadius: 2, color: C_RED }}>✕</button>
-                    </td>
-                  </tr>
-                ))}
+                {sommets.map((s, i) => {
+                  const natif = idSysteme === 'wgs84' ? null : coordonneesNatives(s);
+                  return (
+                    <tr key={i}>
+                      <td style={{ ...TD, fontWeight: 700, color: C_BLUE }}>{i + 1}</td>
+                      <td style={TD}>
+                        <input type="text" step="0.000001"
+                          value={idSysteme === 'wgs84' ? s.lat : (Number.isFinite(natif.y) ? natif.y.toFixed(3) : '')}
+                          onChange={e => (idSysteme === 'wgs84'
+                            ? modifierSommet(i, 'lat', e.target.value)
+                            : modifierSommetNatif(i, 'y', e.target.value))}
+                          style={{ width: '100%', boxSizing: 'border-box', height: 22, padding: '0 4px',
+                            border: `1px solid ${C_BORDER}`, fontSize: 11.5, textAlign: 'right' }} />
+                      </td>
+                      <td style={TD}>
+                        <input type="text" step="0.000001"
+                          value={idSysteme === 'wgs84' ? s.lon : (Number.isFinite(natif.x) ? natif.x.toFixed(3) : '')}
+                          onChange={e => (idSysteme === 'wgs84'
+                            ? modifierSommet(i, 'lon', e.target.value)
+                            : modifierSommetNatif(i, 'x', e.target.value))}
+                          style={{ width: '100%', boxSizing: 'border-box', height: 22, padding: '0 4px',
+                            border: `1px solid ${C_BORDER}`, fontSize: 11.5, textAlign: 'right' }} />
+                      </td>
+                      {/* Toujours la valeur WGS84 réellement STOCKÉE (§4) —
+                          en mode WGS84 c'est l'identité de ce qui vient
+                          d'être saisi ; dans les autres systèmes, c'est la
+                          conversion effective, utile pour vérifier que la
+                          saisie « tombe » au bon endroit sur le globe. */}
+                      <td style={{ ...TD, fontFamily: 'monospace', fontSize: 10.5, color: '#555' }}>
+                        {Number.isFinite(parseFloat(s.lat)) && Number.isFinite(parseFloat(s.lon))
+                          ? `${f6(parseFloat(s.lat))}, ${f6(parseFloat(s.lon))}`
+                          : <span style={{ color: C_RED }}>{t('terrainTabInvalide')}</span>}
+                      </td>
+                      <td style={TD}>
+                        <button onClick={() => supprimerSommet(i)} title={t('terrainSupprimerSommet')}
+                          style={{ padding: '1px 8px', fontSize: 11, cursor: 'pointer', background: '#fff',
+                            border: `1px solid ${C_BORDER}`, borderRadius: 2, color: C_RED }}>✕</button>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {sommets.length === 0 && (
                   <tr><td style={{ ...TD, color: '#888' }} colSpan={5}>{t('terrainAucunSommet')}</td></tr>
                 )}

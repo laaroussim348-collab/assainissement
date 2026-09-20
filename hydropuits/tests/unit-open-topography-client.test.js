@@ -26,6 +26,20 @@ NODATA_value  -9999
 120 121 122 123
 `;
 
+// Même grille, mais avec la convention xllcenter/yllcenter (alternative
+// documentée du format Esri, voir en-tête de openTopographyClient.js) au
+// lieu de xllcorner/yllcorner — xllcenter = xllcorner + cellsize/2.
+const ASCII_GRID_CENTER = `ncols        4
+nrows        3
+xllcenter    -8.0066666667
+yllcenter    31.5933333333
+cellsize     0.0066666667
+NODATA_value  -9999
+100 101 102 103
+110 -9999 112 113
+120 121 122 123
+`;
+
 export const casOpenTopographyClient = [
   // ── buildOpenTopographyUrl ──
   {
@@ -119,5 +133,30 @@ export const casOpenTopographyClient = [
     libelle: 'ASCII Grid : refuse un en-tête incomplet',
     attendu: 'refus',
     source: '§7', executer: () => { try { parseAsciiGrid('ncols 4\nnrows 3\n100 101 102 103\n'); return 'aucun refus'; } catch { return 'refus'; } },
+  },
+
+  // ── Variante xllcenter/yllcenter (voir en-tête du module) ──
+  {
+    libelle: 'ASCII Grid (xllcenter) : accepté, ne s’arrête pas à la 3ᵉ ligne d’en-tête',
+    attendu: true, source: 'bug réel constaté en usage (20/09/2026), voir en-tête du module',
+    executer: () => { parseAsciiGrid(ASCII_GRID_CENTER); return true; },
+  },
+  {
+    libelle: 'ASCII Grid (xllcenter) : xllcorner dérivé = xllcenter - cellsize/2',
+    attendu: -8.0100000000, tolerancePourcent: 1e-6,
+    source: 'relation exacte entre les deux conventions Esri',
+    executer: () => {
+      const g = parseAsciiGrid(ASCII_GRID_CENTER);
+      return g.xllcorner;
+    },
+  },
+  {
+    libelle: 'ASCII Grid (xllcenter) : mêmes valeurs lues que la version xllcorner',
+    attendu: true, source: 'cohérence — seule la convention d’en-tête change, pas la grille',
+    executer: () => {
+      const gCorner = parseAsciiGrid(ASCII_GRID_SYNTHETIQUE);
+      const gCenter = parseAsciiGrid(ASCII_GRID_CENTER);
+      return gCorner.valeur(0, 0) === gCenter.valeur(0, 0) && gCorner.valeur(2, 3) === gCenter.valeur(2, 3);
+    },
   },
 ];
