@@ -31,12 +31,14 @@ export const OVERPASS_URL_PRINCIPALE = 'https://overpass-api.de/api/interpreter'
 export const OVERPASS_URL_MIROIR = 'https://overpass.kumi.systems/api/interpreter';
 
 // Délai d'exécution demandé au serveur Overpass, en secondes. ORIGINE :
-// choix par défaut — l'API documente un défaut serveur de 180s pour les
-// requêtes non bornées, mais une requête bornée à un petit rayon autour
-// d'un terrain (quelques km²) se termine normalement en quelques secondes ;
-// 60s laisse une marge large sans bloquer l'interface anormalement
-// longtemps en cas de serveur chargé.
-export const DELAI_TIMEOUT_S = 60;
+// porté de 60 à 90s après un échec réel constaté en usage (19/09/2026 -
+// 20/09/2026) : les instances publiques (overpass-api.de ET son miroir
+// overpass.kumi.systems) peuvent mettre plus de 60s à répondre en
+// période de charge, même pour une requête bornée à un petit rayon —
+// l'API documente un défaut serveur de 180s pour les requêtes non
+// bornées ; 90s reste une fraction de cette marge tout en couvrant les
+// lenteurs observées sans laisser l'utilisateur attendre indéfiniment.
+export const DELAI_TIMEOUT_S = 90;
 
 /**
  * Rayon de recherche autour du terrain, en mètres.

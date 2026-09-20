@@ -156,16 +156,22 @@ async function executerOverpass(job, sommets, parametres) {
   const rayon_m = parametres.rayon_m || overpassClient.RAYON_RECHERCHE_M_DEFAUT;
   const ql = overpassClient.construireRequeteFacteursHydro(centre.lat, centre.lon, rayon_m);
   job.progres = 0.1;
+  // Délai client toujours AU-DESSUS du budget serveur demandé
+  // (overpassClient.DELAI_TIMEOUT_S) : sans cette marge, une file
+  // d'attente côté serveur suffirait à déclencher notre propre abandon
+  // avant même que la requête n'ait commencé à s'exécuter là-bas —
+  // constaté en usage réel (19-20/09/2026), voir overpassClient.js.
+  const delaiClient_ms = (overpassClient.DELAI_TIMEOUT_S + 30) * 1000;
   let json;
   try {
-    json = await fetchJson(overpassClient.buildOverpassUrl(ql, overpassClient.OVERPASS_URL_PRINCIPALE), job, 70000);
+    json = await fetchJson(overpassClient.buildOverpassUrl(ql, overpassClient.OVERPASS_URL_PRINCIPALE), job, delaiClient_ms);
   } catch (e) {
     verifierAnnulation(job);
     // Repli sur le miroir documenté (voir overpassClient.js) : l'instance
     // principale peut être temporairement surchargée sans que le service
     // Overpass lui-même soit indisponible.
     job.progres = 0.5;
-    json = await fetchJson(overpassClient.buildOverpassUrl(ql, overpassClient.OVERPASS_URL_MIROIR), job, 70000);
+    json = await fetchJson(overpassClient.buildOverpassUrl(ql, overpassClient.OVERPASS_URL_MIROIR), job, delaiClient_ms);
   }
   job.progres = 0.9;
   const resultat = overpassClient.analyserReponseOverpass(json);

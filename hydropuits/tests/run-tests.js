@@ -21,6 +21,7 @@
  */
 import { casI18n } from './unit-i18n.test.js';
 import { casGeodesie } from './unit-geodesie.test.js';
+import { casCoordonnees } from './unit-coordonnees.test.js';
 import { casPolygone } from './unit-polygone.test.js';
 import { casImportTerrain } from './unit-import-terrain.test.js';
 import { casElevationClient } from './unit-elevation-client.test.js';
@@ -51,6 +52,7 @@ const TOLERANCE_DEFAUT_POURCENT = 0.5;
 const SUITES = [
   ['i18n — dictionnaire 4 langues', casI18n],
   ['Géodésie — ellipsoïde WGS84 (Karney)', casGeodesie],
+  ['Coordonnées — Lambert Maroc et UTM', casCoordonnees],
   ['Polygone — validation et normalisation', casPolygone],
   ['Import — fichier de sommets', casImportTerrain],
   ['Source — Open-Meteo Elevation', casElevationClient],

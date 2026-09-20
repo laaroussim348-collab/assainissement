@@ -26,8 +26,20 @@
  *
  * Propriétés demandées : `clay` (argile), `sand` (sable), `silt` (limon)
  * — pourcentages massiques (g/kg dans la réponse brute, convertis en %
- * par parseSoilGridsResponse), profondeur 0-30 cm (horizon de surface,
- * le plus pertinent pour l'infiltration).
+ * par parseSoilGridsResponse), agrégées sur 0-30 cm (horizon de
+ * surface, le plus pertinent pour l'infiltration).
+ *
+ * ⚠️ IL N'EXISTE PAS DE GRANULE NATIVE « 0-30cm » — bug réel constaté en
+ * usage (20/09/2026) : « Réponse SoilGrids incomplète : propriété
+ * 'clay' absente pour la profondeur 0-30cm », alors que
+ * `properties.layers` contenait bien une couche `clay` — seule la
+ * PROFONDEUR demandée n'existait pas. SoilGrids publie ses données selon
+ * les intervalles GlobalSoilMap : 0-5cm, 5-15cm, 15-30cm, 30-60cm,
+ * 60-100cm, 100-200cm — jamais un agrégat 0-30cm directement. Ce client
+ * demande donc les 3 granules natives qui couvrent exactement 0-30 cm
+ * (0-5, 5-15, 15-30) et calcule une MOYENNE PONDÉRÉE PAR L'ÉPAISSEUR de
+ * chacune — pas une simple moyenne arithmétique, qui donnerait un poids
+ * égal à un horizon de 5 cm et à un horizon de 15 cm.
  *
  * SÉPARATION PUR / RÉSEAU : buildSoilGridsUrl() et
  * parseSoilGridsResponse() sont pures. L'appel fetch (fait côté serveur)
@@ -37,7 +49,18 @@
 
 const BASE_URL = 'https://rest.isric.org/soilgrids/v2.0/properties/query';
 const PROPRIETES = ['clay', 'sand', 'silt'];
-const PROFONDEUR = '0-30cm';
+
+/**
+ * Granules natives SoilGrids (GlobalSoilMap) qui couvrent exactement
+ * 0-30 cm — voir la réserve en en-tête de fichier sur l'absence d'une
+ * granule « 0-30cm » directement interrogeable.
+ */
+export const PROFONDEURS_NATIVES_0_30CM = [
+  { label: '0-5cm', epaisseur_cm: 5 },
+  { label: '5-15cm', epaisseur_cm: 10 },
+  { label: '15-30cm', epaisseur_cm: 15 },
+];
+const EPAISSEUR_TOTALE_CM = PROFONDEURS_NATIVES_0_30CM.reduce((s, d) => s + d.epaisseur_cm, 0); // 30
 
 export function buildSoilGridsUrl(lat, lon) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
@@ -45,7 +68,7 @@ export function buildSoilGridsUrl(lat, lon) {
   }
   const params = new URLSearchParams({ lon: String(lon), lat: String(lat) });
   for (const p of PROPRIETES) params.append('property', p);
-  params.append('depth', PROFONDEUR);
+  for (const d of PROFONDEURS_NATIVES_0_30CM) params.append('depth', d.label);
   params.append('value', 'mean');
   return `${BASE_URL}?${params.toString()}`;
 }
@@ -57,7 +80,9 @@ export function buildSoilGridsUrl(lat, lon) {
  * valeurs sont en unités CONVENTIONNELLES SoilGrids (dixièmes de
  * pourcentage pour clay/sand/silt, cf. documentation officielle "mapped
  * units" — d_factor=10), d'où la division par 10 ci-dessous pour obtenir
- * un pourcentage direct.
+ * un pourcentage direct. Les 3 granules natives (voir
+ * PROFONDEURS_NATIVES_0_30CM) sont combinées par une moyenne pondérée
+ * par leur épaisseur en cm, pas une moyenne arithmétique simple.
  */
 export function parseSoilGridsResponse(json) {
   const layers = json?.properties?.layers;
@@ -67,12 +92,16 @@ export function parseSoilGridsResponse(json) {
   const resultat = {};
   for (const p of PROPRIETES) {
     const layer = layers.find((l) => l.name === p);
-    const depth = layer?.depths?.find((d) => d.label === PROFONDEUR);
-    const brut = depth?.values?.mean;
-    if (brut === undefined || brut === null) {
-      throw new Error(`Réponse SoilGrids incomplète : propriété '${p}' absente pour la profondeur ${PROFONDEUR}.`);
+    let sommePonderee = 0;
+    for (const { label, epaisseur_cm } of PROFONDEURS_NATIVES_0_30CM) {
+      const depth = layer?.depths?.find((d) => d.label === label);
+      const brut = depth?.values?.mean;
+      if (brut === undefined || brut === null) {
+        throw new Error(`Réponse SoilGrids incomplète : propriété '${p}' absente pour la profondeur ${label}.`);
+      }
+      sommePonderee += brut * epaisseur_cm;
     }
-    resultat[p] = brut / 10; // d_factor=10 (documentation SoilGrids v2.0) -> pourcentage
+    resultat[p] = (sommePonderee / EPAISSEUR_TOTALE_CM) / 10; // moyenne pondérée par épaisseur, puis dixièmes -> pourcentage
   }
   const somme = resultat.clay + resultat.sand + resultat.silt;
   return {

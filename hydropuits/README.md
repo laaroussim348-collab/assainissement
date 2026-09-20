@@ -513,72 +513,141 @@ en détail dans le code et la section d'étape correspondante ; ce qui
 suit n'en est que l'index, pour qu'aucun ne reste enterré dans un
 commentaire qu'on ne pense pas à relire.
 
-### 1. Cinq fichiers HydroCrue jamais fournis
+### 1. Quatre fichiers HydroCrue jamais fournis
 
 Le cahier des charges (§2.2, §2.3) imposait de RÉUTILISER, sans les
 modifier, cinq fichiers de HydroCrue. Ils ont été demandés à l'étape 1,
 puis re-demandés aux étapes 3, 4 et 5 (systématiquement vérifiés absents
-via `git ls-tree` sur le dépôt de référence à chaque fois) — sans
-réponse. Conséquences précises, chacune affichée à l'écran plutôt que
-contournée en silence (§5) :
+via `git ls-tree` sur le dépôt de référence à chaque fois) — jamais
+fournis. **Mise à jour du 20/09/2026** : un utilisateur réel a signalé
+que « les coordonnées Lambert et UTM ne fonctionnent pas », bloquant
+l'usage du logiciel au Maroc — plutôt que d'attendre indéfiniment un
+fichier qui n'arrive pas, `calculations/coordonnees.js` a été
+**implémenté directement**, à partir de paramètres EPSG vérifiés (voir
+§2 ci-dessous) : ce n'est donc plus « le fichier HydroCrue », c'est une
+implémentation indépendante, documentée et testée. Les 4 AUTRES fichiers
+restent non fournis :
 
 | Fichier attendu | Ce qu'il aurait apporté | Ce qui existe à la place |
 |---|---|---|
-| `calculations/coordonnees.js` | Systèmes Lambert Merchich, UTM, Point 58, Nord Sahara 59 | Seul le WGS84 degrés décimaux est opérationnel ; les autres systèmes sont visibles dans le sélecteur mais désactivés, avec la raison affichée (`TerrainTab.js`) |
 | `services/miniXlsx.js` | Import de classeurs `.xlsx` | Seul le CSV fonctionne ; `.xlsx` renvoie un message expliquant comment enregistrer en CSV (`importTerrain.js`, `lireXlsx()`) |
 | `services/importPoints.js` | Logique d'import Excel déjà écrite dans HydroCrue | Réimplémentée pour le CSV dans `importTerrain.js` |
 | `calculations/DelimitationCarteMulti.js` | Carte de saisie multi-polygone de référence | `CarteTerrain.js` réécrit pour HydroPuits (polygone unique éditable), sans base à comparer au pixel près |
-| `unit-coordonnees.test.js` | Suite de tests de référence pour les conversions de coordonnées | Sans objet tant que `coordonnees.js` n'existe pas |
+| `unit-coordonnees.test.js` | Suite de tests de référence HydroCrue pour les conversions de coordonnées | `tests/unit-coordonnees.test.js` réécrit indépendamment (round-trips + cross-validation contre le moteur géodésique, voir §2) |
 
-Conséquence la plus visible pour l'utilisateur : un terrain doit être
-saisi en WGS84 (latitude/longitude), pas en coordonnées Lambert ou UTM
-locales — ni en `.xlsx` sans passer par une conversion CSV manuelle au
-préalable.
+Conséquence résiduelle pour l'utilisateur : un fichier `.xlsx` doit
+encore être réenregistré en CSV avant import (les coordonnées, elles,
+fonctionnent dans les 6 systèmes listés au §2).
 
-### 2. Pas de vraie projection UTM — plan tangent local à la place
+### 2. Lambert Merchich et UTM : implémentés le 20/09/2026, à partir de paramètres vérifiés
 
-`calculations/grilleLocale.js` n'implémente pas une vraie projection UTM
-(série de Krüger à l'ordre n⁶) : `WebFetch` s'est révélé bloqué, dans
-cet environnement de développement, sur toutes les sources de référence
-tentées (Wikipedia, movable-type.co.uk, neacsu.net), et recopier une
-formule de mémoire sans pouvoir la vérifier est exactement ce que le
-cahier des charges interdit (§8). À la place : un plan tangent local au
-centroïde du terrain, mis à l'échelle par différences finies
-**géodésiques exactes** (le moteur de Karney déjà validé, §4 ci-dessus),
-avec une distorsion **mesurée** (pas supposée) — de l'ordre de 10⁻⁵ à
-l'échelle d'une parcelle, très en dessous du seuil d'alerte de 0,1 %
-(voir `tests/unit-grille-locale.test.js`). À remplacer par le
-`utm-wgs84` de `coordonnees.js` dès qu'il sera fourni — les fonctions
-`versLocal`/`versGeographique` ont volontairement les mêmes signatures.
+`calculations/coordonnees.js` convertit désormais WGS84 ↔ 6 systèmes :
+UTM WGS84 (n'importe quel fuseau) et les 4 zones Lambert Merchich (Nord,
+Sud, Sahara Nord, Sahara Sud) — branché dans `TerrainTab.js` (saisie au
+clavier ET import CSV ; le tracé à la carte reste en WGS84, Leaflet
+travaillant nativement dans ce système).
 
-### 3. Réseau sortant bloqué dans cet environnement de développement
+**Méthode** : (1) conversion géodésique ↔ géocentrique cartésien par
+formule fermée standard ; (2) changement de datum Merchich↔WGS84 par
+translation géocentrique à 3 paramètres (EPSG:1166, précision ±7 m
+annoncée par l'EPSG lui-même — pas un calage cadastral centimétrique,
+mais très en dessous de la résolution utile de ce logiciel, grille
+≈ 90 m) ; (3) projection Lambert conforme conique à 1 parallèle
+(EPSG 9801, formules de Snyder 1987) ou Mercator transverse (UTM, mêmes
+formules, précision <1 mm à moins de 3° du méridien central — pas la
+série de Krüger à l'ordre n⁶ utilisée pour une précision géodésique
+extrême, inutile ici).
 
-Aucun des 5 clients réseau (`elevationClient.js`, `overpassClient.js`,
-`nasaPowerClient.js`, `soilGridsClient.js`, `openTopographyClient.js`)
-n'a pu être exercé contre son vrai serveur distant pendant cette
-session : le bac à sable de développement bloque toute connexion
-sortante hors d'une liste précise (registre npm, dépôts de paquets),
-confirmée en observant les rejets de connexion du proxy sortant. Ce
-n'est pas propre à ce projet — HydroCrue portait déjà la même réserve
-sur son client NASA POWER.
+**Vérification des paramètres** (20/09/2026, `WebSearch` — `WebFetch`
+restant bloqué dans cet environnement pour epsg.io/epsg.org eux-mêmes) :
+chaque paramètre (ellipsoïde Clarke 1880 IGN, lat₀/lon₀/k₀/FE/FN des 4
+zones, décalage de datum) recoupé sur au moins 3 miroirs indépendants du
+registre EPSG (dont OSGeo/PROJ-CRS-Explorer, GDAL, JuliaEarth/
+CoordRefSystems.jl) plus un support de cours de géodésie universitaire
+marocain — voir l'en-tête de `coordonnees.js` pour le détail complet,
+y compris un site tiers non officiel repéré comme donnant des
+paramètres ERRONÉS et délibérément écarté comme source.
 
-Conséquence et mitigation :
-- Construction d'URL et analyse de réponse sont testées sur des
-  réponses **synthétiques reproduisant exactement le format documenté**
-  de chaque API (voir chaque `tests/unit-*-client.test.js`), jamais
-  contre le vrai serveur.
+**Vérification du calcul** (indépendante des paramètres eux-mêmes,
+`tests/unit-coordonnees.test.js`) : round-trip WGS84↔système pour les 6
+systèmes (écart < 1 mm), l'origine de chaque zone Lambert reprojette
+exactement sur (FE, FN), et — cross-validation la plus forte — la
+distance projetée le long du parallèle standard d'une zone Lambert,
+divisée par k₀, correspond à la distance géodésique **calculée par le
+moteur de Karney déjà validé** (`geodesie.js`) à 7 ppm près : c'est la
+propriété mathématique définissant une projection conforme au parallèle
+standard, vérifiée contre un oracle indépendant, pas juste un round-trip
+interne au même code.
+
+**Ce qui reste désactivé** : `utm-point58` et `utm-nordsahara59`, deux
+datums historiques propres au Sahara occidental dont les paramètres de
+changement de datum n'ont pas pu être vérifiés avec la même rigueur —
+visibles dans le sélecteur, désactivés, raison affichée, comme
+auparavant pour l'ensemble des systèmes non-WGS84.
+
+**Ce qui n'a volontairement PAS changé** : `calculations/grilleLocale.js`
+(la grille de CALCUL interne — pente/TWI/densités, §4/§5 ci-dessus)
+continue d'utiliser son plan tangent local, pas les formules UTM
+ci-dessus. Un remplacement reste possible (les signatures
+`versLocal`/`versGeographique` ont été conçues pour ça) mais n'a pas été
+fait dans cette correction : la distorsion déjà mesurée de cette
+approche (~10⁻⁵, tests/unit-grille-locale.test.js) est sans rapport
+avec le bug réel signalé (la saisie utilisateur, pas la grille de
+calcul), et le risque d'un changement non sollicité dans un module qui
+alimente tout le pipeline de facteurs dépassait le bénéfice pratique.
+
+### 3. Réseau sortant bloqué dans cet environnement de développement — mais partiellement vérifié depuis, en usage réel
+
+Aucun des 5 clients réseau ne peut être exercé contre son vrai serveur
+distant DEPUIS CET ENVIRONNEMENT DE DÉVELOPPEMENT : le bac à sable
+bloque toute connexion sortante hors d'une liste précise (registre npm,
+dépôts de paquets), confirmée en observant les rejets de connexion du
+proxy sortant. Ce n'est pas propre à ce projet — HydroCrue portait déjà
+la même réserve sur son client NASA POWER.
+
+**Mise à jour du 20/09/2026 — premiers résultats réels** : un
+utilisateur exécutant HydroPuits sur un poste avec accès réseau normal a
+transmis des captures d'écran de l'onglet Données. Trois bugs RÉELS en
+ont été identifiés et corrigés (recherches `WebSearch` croisant plusieurs
+sources indépendantes pour chacun, aucune donnée réelle recopiée
+aveuglément) :
+
+- **Overpass** (« This operation was aborted » sur les 2 miroirs) :
+  délai côté serveur porté de 60 à 90 s, délai côté client de 70 à
+  120 s — les instances publiques peuvent être plus lentes que prévu en
+  période de charge (`overpassClient.js`, `telechargementJobs.js`).
+- **SoilGrids** (« propriété 'clay' absente pour la profondeur 0-30cm »)
+  : bug de conception identifié ET confirmé indépendamment par
+  recherche sur le code source réel d'un client tiers (`ncss-tech/
+  soilDB`, R/CRAN) — SoilGrids ne publie **aucune** granule native
+  « 0-30cm » (seulement 0-5/5-15/15-30/30-60/60-100/100-200 cm) ; le
+  client interroge désormais les 3 granules qui couvrent 0-30 cm et
+  calcule une moyenne pondérée par leur épaisseur (`soilGridsClient.js`).
+- **OpenTopography** (« nodata_value manquant ») : le parseur
+  n'acceptait que la convention d'en-tête `xllcorner`/`yllcorner` ; la
+  variante `xllcenter`/`yllcenter`, également documentée par la
+  spécification Esri du format ASCII Grid, est désormais acceptée
+  (`openTopographyClient.js`) — cause probable mais pas formellement
+  confirmée (le portail OpenTopography restait bloqué depuis CET
+  environnement pour capturer une réponse brute réelle).
+
+Ce que cette correction NE remplace PAS : aucun de ces 3 clients n'a
+encore été revérifié contre son vrai serveur DEPUIS cet environnement de
+développement (toujours bloqué) — seule la recherche croisée et le
+raisonnement à partir du message d'erreur réel transmis par
+l'utilisateur ont guidé chaque correction. **Confirmation par
+l'utilisateur, sur son propre poste, encore attendue.**
+
+Conséquence et mitigation, inchangées pour le reste :
+- Construction d'URL et analyse de réponse restent testées sur des
+  réponses **synthétiques reproduisant le format documenté** de chaque
+  API (voir chaque `tests/unit-*-client.test.js`).
 - Le pipeline COMPLET (téléchargement → grille → dérivées → hydrologie
-  → géométrie linéaire → reclassement → AHP → carte) a néanmoins été
-  vérifié de bout en bout de façon réaliste : en préremplissant le cache
-  disque du serveur (`cacheDonnees.js`) avec des données synthétiques
-  MAIS conformes au format réel, exactement comme le ferait un vrai
-  téléchargement réussi, puis en pilotant l'application avec Playwright.
-  Voir les étapes 7 et 8 ci-dessus pour le détail de ce qui a été
-  observé (seuils calculés, CR, carte, classement, sensibilité, rapport
-  — tous corrects sur ce jeu de données).
-- **À revérifier avant mise en production** sur un poste avec un accès
-  réseau normal : la forme exacte des réponses JSON réelles n'a jamais
-  été vue par ce code, seulement leur documentation.
+  → géométrie linéaire → reclassement → AHP → carte) a été vérifié de
+  bout en bout de façon réaliste en préremplissant le cache disque du
+  serveur (`cacheDonnees.js`) avec des données synthétiques MAIS
+  conformes au format réel, puis en pilotant l'application avec
+  Playwright (voir étapes 7 et 8 ci-dessus).
 
 ### 4. Lithologie/sol : simplification assumée, source en pause
 
