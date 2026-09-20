@@ -94,14 +94,16 @@ export const SOURCES = [
     urlInscription: null,
     gratuit: true,
     licence: 'ISRIC SoilGrids — CC-BY 4.0.',
-    verifieLe: '2026-09-19',
-    // ⚠️ Vérifié le 19/09/2026 : l'API REST (bêta) de l'ISRIC est en pause
-    // ("temporarily paused", aucune date de rétablissement annoncée). Le
-    // client est écrit et testé sur des réponses synthétiques (format
-    // documenté), mais un téléchargement réel échouera tant que l'ISRIC
-    // n'aura pas rétabli le service — l'échec est affiché tel quel à
-    // l'écran (§5), jamais masqué.
-    indisponibleTemporairement: true,
+    verifieLe: '2026-09-20',
+    // Le 19/09/2026, l'API REST (bêta) de l'ISRIC était en pause
+    // ("temporarily paused") et la source était marquée
+    // `indisponibleTemporairement`. Ce marquage a été RETIRÉ le
+    // 20/09/2026 sur PREUVE : le diagnostic réseau exécuté depuis le
+    // poste d'un utilisateur réel obtient HTTP 200 en 632 ms, avec une
+    // réponse conforme (properties.layers[].depths[].values.mean pour
+    // la propriété « clay », profondeur 0-5cm). Le service est donc
+    // rétabli ; le facteur Lithologie/sol redevient actif par défaut
+    // (voir tabs/facteursCriteres.js).
     facteurs: ['lithologieSol'],
   },
   {

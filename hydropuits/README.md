@@ -693,6 +693,76 @@ allowlist`, détecte que TOUT est bloqué, et le dit. C'est précisément le
 comportement attendu ici — et la preuve que le rapport dira la vérité
 sur un poste où, lui, le réseau fonctionne.
 
+### 3 bis. Le diagnostic a tranché : les deux vraies causes, corrigées sur preuve
+
+L'utilisateur a exécuté le diagnostic sur son poste et transmis le
+rapport le 20/09/2026. **6 cibles sur 9 fonctionnaient** — Open-Meteo,
+NASA POWER, SoilGrids, les deux fonds de carte et OpenTopography
+répondaient toutes `HTTP 200`. Les deux seules pannes réelles n'avaient
+AUCUN rapport avec ce qui avait été supposé lors des deux corrections
+précédentes. C'est la justification a posteriori du diagnostic :
+**deviner avait produit deux corrections à côté de la cible ; mesurer a
+donné les deux causes en un seul aller-retour.**
+
+**Cause n° 1 — Overpass refusait nos requêtes faute de `User-Agent`**
+(ce n'était donc pas un problème de délai) :
+
+```
+overpass.kumi.systems → HTTP 429
+  « Please include a meaningful User-Agent string with your requests
+    to avoid rate-limiting. »
+overpass-api.de       → HTTP 406 Not Acceptable (Apache)
+```
+
+Vérifié dans cet environnement : `fetch` de Node 22 envoie
+`User-Agent: node` — littéralement — et `Accept: */*` (correct, donc la
+négociation de contenu n'est pas en cause). Un User-Agent par défaut est
+exactement ce que ces instances filtrent. `reseauRobuste.js` envoie
+désormais `HydroPuits/0.1 (…)` sur **toute** requête sortante ; cela
+répond aussi à la politique d'usage d'OSM/Overpass, qui exige qu'un
+client s'identifie. La chaîne ne contient ni identifiant de poste ni
+donnée personnelle (§3.3), et cela est testé. L'envoi effectif de
+l'en-tête a été vérifié sur un serveur HTTP local — pas seulement dans
+une constante.
+
+**Cause n° 2 — OpenTopography ne déclare PAS de `NODATA_value`.** La
+réponse brute capturée (emprise de 0,01° au Maroc, COP30) commence
+ainsi :
+
+```
+ncols        36
+nrows        36
+xllcorner    -8.000138900000
+yllcorner    31.630138900000
+cellsize     0.000277777778
+453.78460693359375 454.75750732421875 456.62158203125 ...
+```
+
+Cinq lignes d'en-tête, puis les altitudes — **aucune ligne
+`NODATA_value`**, alors que le parseur l'exigeait. C'est conforme à la
+spécification Esri, qui donne ce champ pour optionnel (défaut -9999), et
+un générateur l'omet légitimement quand aucune cellule n'est vide — le
+cas d'un MNT en plein continent. Le champ est donc devenu facultatif :
+en son absence, la convention -9999 est appliquée **et affichée à
+l'écran** (`srcAvtNodataAbsent`), jamais substituée en silence (§5).
+Cet en-tête réel est désormais un cas de test (`ASCII_GRID_REEL_SANS_NODATA`)
+— la seule réponse RÉELLE dont ce projet dispose, tout le reste étant
+synthétique.
+
+À noter : la variante `xllcenter`/`yllcenter` corrigée lors du tour
+précédent n'était **pas** en cause ici (le fichier réel utilise bien
+`xllcorner`). Le correctif reste valide et utile, mais il visait à côté.
+
+**Deux conséquences heureuses du même rapport :**
+- **SoilGrids est rétablie** (`HTTP 200` en 632 ms, réponse conforme).
+  Le marquage `indisponibleTemporairement` est retiré et le facteur
+  Lithologie/sol redevient **actif par défaut** : l'analyse repose
+  désormais sur les **8** facteurs, non plus 7.
+- **OpenTopography met 11,3 s pour 36×36 cellules.** Le service
+  rééchantillonne à la demande, donc le temps croît avec la surface : le
+  délai est porté de 60 s à 180 s, sur mesure et non par précaution
+  vague.
+
 Conséquence et mitigation, inchangées pour le reste :
 - Construction d'URL et analyse de réponse restent testées sur des
   réponses **synthétiques reproduisant le format documenté** de chaque

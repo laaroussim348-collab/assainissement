@@ -427,6 +427,9 @@ function ResultatSource({ id, resultat, t, tp }) {
     return (
       <div style={{ marginTop: 6, fontSize: 10.5, color: '#555' }}>
         {tp('srcResumeOpenTopo', { nb: d.ncols * d.nrows, lignes: d.nrows, colonnes: d.ncols })}
+        {Number.isFinite(resultat?.meta?.nodataSuppose) && (
+          <Alert tone="warn">{tp('srcAvtNodataAbsent', { valeur: resultat.meta.nodataSuppose })}</Alert>
+        )}
       </div>
     );
   }

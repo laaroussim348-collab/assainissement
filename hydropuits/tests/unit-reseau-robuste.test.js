@@ -15,10 +15,28 @@
  */
 import {
   estStatutReessayable, estErreurReseauReessayable, delaiAvantReessai, lireRetryAfter,
-  CODES_HTTP_REESSAYABLES, DELAI_BASE_MS, DELAI_MAX_MS,
+  CODES_HTTP_REESSAYABLES, DELAI_BASE_MS, DELAI_MAX_MS, USER_AGENT,
 } from '../src/services/reseauRobuste.js';
 
 export const casReseauRobuste = [
+  // ── User-Agent : la cause RÉELLE des refus d'Overpass (20/09/2026) ──
+  {
+    libelle: 'User-Agent : nomme le logiciel et sa version (exigé par la politique d’usage d’OSM/Overpass)',
+    attendu: true,
+    source: 'diagnostic réel du 20/09/2026 : kumi.systems → HTTP 429 « include a meaningful User-Agent », overpass-api.de → HTTP 406',
+    executer: () => /HydroPuits\/\d+\.\d+/.test(USER_AGENT),
+  },
+  {
+    libelle: 'User-Agent : assez descriptif pour être « meaningful » (> 20 caractères)',
+    attendu: true, source: 'message explicite du miroir Overpass',
+    executer: () => USER_AGENT.length > 20,
+  },
+  {
+    libelle: 'User-Agent : ne divulgue ni identifiant de poste ni donnée personnelle (§3.3)',
+    attendu: true, source: '§3.3 — le logiciel n’émet aucune donnée identifiant l’utilisateur',
+    executer: () => !/@|machine|user|id=|mail/i.test(USER_AGENT),
+  },
+
   // ── Quels codes HTTP méritent un réessai ──
   {
     libelle: 'Réessai : 429 (quota dépassé) est réessayable — c’est LE cas où réessayer est attendu',

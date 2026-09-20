@@ -70,6 +70,31 @@ export const DELAI_BASE_MS = 1000;
  */
 export const DELAI_MAX_MS = 30000;
 
+/**
+ * En-tête `User-Agent` envoyé avec CHAQUE requête sortante.
+ *
+ * POURQUOI (corrigé le 20/09/2026 sur PREUVE) : le diagnostic réseau
+ * exécuté depuis le poste d'un utilisateur réel a montré que les DEUX
+ * instances Overpass refusaient nos requêtes, et pour la même raison —
+ * l'absence d'un User-Agent identifiant l'application :
+ *
+ *   overpass.kumi.systems → HTTP 429, message explicite :
+ *     « Please include a meaningful User-Agent string with your
+ *       requests to avoid rate-limiting. »
+ *   overpass-api.de       → HTTP 406 Not Acceptable (Apache)
+ *
+ * `fetch` de Node n'envoie qu'un User-Agent générique (« node » /
+ * « undici »), que ces services traitent comme un client anonyme. Ce
+ * n'est donc PAS un problème de délai dépassé, contrairement à ce qui
+ * avait été supposé faute de pouvoir observer la réponse réelle.
+ *
+ * S'identifier est par ailleurs EXIGÉ par la politique d'usage d'OSM et
+ * d'Overpass : un opérateur doit pouvoir savoir quel logiciel l'appelle.
+ * La chaîne se limite au nom et à la version du logiciel — aucune
+ * donnée personnelle, aucun identifiant de poste (§3.3).
+ */
+export const USER_AGENT = 'HydroPuits/0.1 (application de favorabilite hydrogeologique pour forage)';
+
 /** Un code HTTP mérite-t-il un réessai ? (PURE) */
 export function estStatutReessayable(statut) {
   return CODES_HTTP_REESSAYABLES.includes(statut);
@@ -149,14 +174,20 @@ function attendre(ms, signal) {
  * la tentative 2 avant même qu'elle parte (c'est exactement le piège qui
  * cassait le repli d'Overpass sur son miroir).
  */
-async function fetchUneTentative(url, { timeoutMs, signalExterne, ...options }) {
+async function fetchUneTentative(url, { timeoutMs, signalExterne, headers, ...options }) {
   const controleur = new AbortController();
   let causeDelai = false;
   const surAbandonExterne = () => controleur.abort();
   signalExterne?.addEventListener('abort', surAbandonExterne, { once: true });
   const minuteur = setTimeout(() => { causeDelai = true; controleur.abort(); }, timeoutMs);
   try {
-    return await fetch(url, { ...options, signal: controleur.signal });
+    return await fetch(url, {
+      ...options,
+      // User-Agent d'abord, pour qu'un appelant puisse toujours le
+      // remplacer explicitement s'il en a besoin.
+      headers: { 'User-Agent': USER_AGENT, ...(headers || {}) },
+      signal: controleur.signal,
+    });
   } catch (e) {
     const erreur = new Error(
       causeDelai
