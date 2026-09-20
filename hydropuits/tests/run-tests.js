@@ -30,6 +30,8 @@ import { casNasaPowerClient } from './unit-nasa-power-client.test.js';
 import { casSoilGridsClient } from './unit-soil-grids-client.test.js';
 import { casOpenTopographyClient } from './unit-open-topography-client.test.js';
 import { casSourcesDonnees } from './unit-sources-donnees.test.js';
+import { casReseauRobuste } from './unit-reseau-robuste.test.js';
+import { casDiagnosticReseau } from './unit-diagnostic-reseau.test.js';
 import { casCacheDonnees } from './unit-cache-donnees.test.js';
 import { casGrilleLocale } from './unit-grille-locale.test.js';
 import { casGrilleMnt } from './unit-grille-mnt.test.js';
@@ -39,6 +41,7 @@ import { casGeometrieLigneaire } from './unit-geometrie-ligneaire.test.js';
 import { casAhp } from './unit-ahp.test.js';
 import { casReclassement } from './unit-reclassement.test.js';
 import { casFacteurs } from './unit-facteurs.test.js';
+import { casFacteursCriteres } from './unit-facteurs-criteres.test.js';
 import { casFavorabilite } from './unit-favorabilite.test.js';
 import { casSensibilite } from './unit-sensibilite.test.js';
 
@@ -61,6 +64,8 @@ const SUITES = [
   ['Source — SoilGrids (ISRIC)', casSoilGridsClient],
   ['Source — OpenTopography', casOpenTopographyClient],
   ['Registre des sources de données', casSourcesDonnees],
+  ['Réseau — réessais et temporisation', casReseauRobuste],
+  ['Diagnostic réseau — censure des clés et rapport', casDiagnosticReseau],
   ['Cache disque des données', casCacheDonnees],
   ['Grille locale (projection métrique)', casGrilleLocale],
   ['Grille de calcul + interpolation MNT', casGrilleMnt],
@@ -70,6 +75,7 @@ const SUITES = [
   ['AHP — poids, cohérence (CI/CR), renormalisation', casAhp],
   ['Reclassement — seuils, bornes, quantiles', casReclassement],
   ['Facteurs — assemblage des 8 facteurs depuis les sources', casFacteurs],
+  ['Facteurs écartés — disponibilité et renormalisation', casFacteursCriteres],
   ['Favorabilité — combinaison pondérée et classement des points', casFavorabilite],
   ['Sensibilité — perturbation ±20% des poids AHP', casSensibilite],
 ];

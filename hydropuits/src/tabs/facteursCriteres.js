@@ -29,6 +29,28 @@ export function actifsEffectifs(etat) {
   return etat.facteurs?.actifs || FACTEURS_ACTIFS_PAR_DEFAUT;
 }
 
+/**
+ * Facteurs actifs RÉELLEMENT calculables : les facteurs actifs, moins
+ * ceux dont la source n'a pas pu être récupérée (facteurs.disponibilite).
+ *
+ * POURQUOI (corrigé le 20/09/2026, sur retour d'un utilisateur réel) :
+ * un facteur actif mais sans donnée invalide TOUTES les cellules du
+ * calcul (règle voulue de favorabilite.js : pas de moyenne partielle
+ * silencieuse). Conséquence non voulue : une seule source en panne —
+ * Overpass en surcharge, SoilGrids en pause — ne dégradait pas le
+ * résultat, elle le supprimait ENTIÈREMENT, et l'utilisateur n'obtenait
+ * plus rien du tout. Écarter le facteur et renormaliser les poids sur
+ * les restants donne un résultat honnête et utilisable, À CONDITION de
+ * le dire à l'écran — c'est fait dans ResultatsTab.js, et ça reste
+ * l'application de la règle de renormalisation déjà prévue au §3.4,
+ * simplement déclenchée par une panne plutôt que par un décochage.
+ */
+export function actifsDisponibles(etat, disponibilite) {
+  const actifs = actifsEffectifs(etat);
+  if (!disponibilite) return actifs;
+  return actifs.filter((id) => disponibilite[id] !== false);
+}
+
 export function sensEffectif(etat, id) {
   return etat.facteurs?.sens?.[id] || SENS_DEFAUT_PAR_FACTEUR[id];
 }
@@ -67,12 +89,22 @@ export function matriceEffective(etat) {
  * jamais un poids qui a l'air valide).
  */
 export function poidsFinaux(etat) {
+  return poidsFinauxPourActifs(etat, actifsEffectifs(etat));
+}
+
+/**
+ * Comme poidsFinaux(), mais renormalisés sur une liste de facteurs
+ * IMPOSÉE — celle réellement calculable (voir actifsDisponibles). La
+ * matrice de comparaisons reste celle de l'utilisateur : seuls les poids
+ * issus de son vecteur propre sont redistribués, jamais réinventés.
+ */
+export function poidsFinauxPourActifs(etat, actifs) {
   const matrice = matriceEffective(etat);
   const { poids, coherent } = evaluerCoherence(matrice);
   if (!coherent) return null;
   const poidsParFacteur = associerPoids(IDS_FACTEURS, poids);
   try {
-    return renormaliserPoids(poidsParFacteur, actifsEffectifs(etat));
+    return renormaliserPoids(poidsParFacteur, actifs);
   } catch {
     return null; // aucun facteur actif — rien à renormaliser
   }

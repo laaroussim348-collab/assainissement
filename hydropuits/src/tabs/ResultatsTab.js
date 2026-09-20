@@ -26,7 +26,7 @@ import { validerPolygone } from '../calculations/polygone.js';
 import { executerPipelineFacteurs } from '../services/pipelineClient.js';
 import { reclasserTousLesFacteurs, combinerFavorabilite, classerMeilleursPoints } from '../calculations/favorabilite.js';
 import { RAYON_DENSITE_M_DEFAUT } from '../calculations/facteurs.js';
-import { actifsEffectifs, sensEffectif, seuilsEffectifs, poidsFinaux } from './facteursCriteres.js';
+import { actifsEffectifs, actifsDisponibles, sensEffectif, seuilsEffectifs, poidsFinaux, poidsFinauxPourActifs } from './facteursCriteres.js';
 import { NOM_CLE_FACTEUR } from './CriteresTab.js';
 import CarteFavorabilite from '../CarteFavorabilite.js';
 import { C_BLUE, C_AMBER, Panel, Alert, NoData } from '../ui';
@@ -66,22 +66,34 @@ export default function ResultatsTab({ etat, resultatCalcul, setResultatCalcul }
         setChargement(false);
         return;
       }
-      const poidsActuels = poidsFinaux(etat);
-      if (!poidsActuels) {
-        setErreur(t('resultatsErreurCoherence'));
+      // Un facteur demandé mais dont la source est tombée (ou dont les
+      // seuils ne sont pas calculables faute de cellules valides) est
+      // ÉCARTÉ, pas bloquant : sans cela, une seule source en panne
+      // supprimait tout le résultat au lieu de le réduire. Chaque
+      // abandon est listé à l'écran juste en dessous (§5).
+      const demandes = actifsEffectifs(etat);
+      const seuilsParFacteur = {};
+      const sensParFacteur = {};
+      for (const id of actifsDisponibles(etat, construction.disponibilite)) {
+        const seuils = seuilsEffectifs(etat, id, construction.grillesFacteurs, construction.grille.masque);
+        if (!seuils) continue; // écarté : seuils non calculables
+        seuilsParFacteur[id] = seuils;
+        sensParFacteur[id] = sensEffectif(etat, id);
+      }
+      const actifs = Object.keys(seuilsParFacteur);
+      const abandonnes = demandes.filter((id) => !actifs.includes(id));
+
+      if (actifs.length === 0) {
+        setErreur(tp('resultatsAucunFacteur', {
+          facteurs: demandes.map((id) => t(NOM_CLE_FACTEUR[id])).join(', '),
+        }));
         setChargement(false);
         return;
       }
-      const actifs = actifsEffectifs(etat);
-      const seuilsParFacteur = {};
-      const sensParFacteur = {};
-      for (const id of actifs) {
-        seuilsParFacteur[id] = seuilsEffectifs(etat, id, construction.grillesFacteurs, construction.grille.masque);
-        sensParFacteur[id] = sensEffectif(etat, id);
-      }
-      const manquants = actifs.filter((id) => !seuilsParFacteur[id]);
-      if (manquants.length > 0) {
-        setErreur(tp('resultatsSeuilsManquants', { facteurs: manquants.map((id) => t(NOM_CLE_FACTEUR[id])).join(', ') }));
+
+      const poidsActuels = poidsFinauxPourActifs(etat, actifs);
+      if (!poidsActuels) {
+        setErreur(t('resultatsErreurCoherence'));
         setChargement(false);
         return;
       }
@@ -91,7 +103,18 @@ export default function ResultatsTab({ etat, resultatCalcul, setResultatCalcul }
       const meilleursPoints = classerMeilleursPoints(construction.grille, score, NOMBRE_MEILLEURS_POINTS_DEFAUT);
       setResultatCalcul({
         grille: construction.grille, grillesClasses, poids: poidsActuels, score, nManquantes, meilleursPoints,
-        avertissements: construction.avertissements,
+        avertissements: [
+          ...construction.avertissements,
+          ...(abandonnes.length > 0
+            ? [{
+              cle: 'resultatsFacteursEcartes',
+              params: {
+                facteurs: abandonnes.map((id) => t(NOM_CLE_FACTEUR[id])).join(', '),
+                restants: actifs.length,
+              },
+            }]
+            : []),
+        ],
       });
       setChargement(false);
     }).catch((e) => { setErreur(e.message); setChargement(false); });

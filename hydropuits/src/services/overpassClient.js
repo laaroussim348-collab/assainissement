@@ -71,6 +71,22 @@ export function construireRequeteFacteursHydro(lat, lon, rayon_m = RAYON_RECHERC
   }
   if (!(rayon_m > 0)) throw new Error('construireRequeteFacteursHydro : le rayon doit être positif.');
   const autour = `(around:${rayon_m},${lat},${lon})`;
+  // `out geom;` PLUTÔT QUE `out body; >; out skel qt;` (changé le
+  // 20/09/2026, après des délais dépassés répétés en usage réel) :
+  //
+  //  - `>;` demande au serveur de RÉCURSER sur tous les nœuds de tous les
+  //    chemins trouvés, puis `out skel qt` les renvoie un par un comme
+  //    objets distincts, avec leur identifiant. C'est l'étape la plus
+  //    coûteuse de la requête côté serveur, et de loin la plus volumineuse
+  //    sur le réseau (un cours d'eau de 200 points = 200 objets JSON avec
+  //    identifiants, que le client doit ensuite recoller lui-même).
+  //  - `out geom;` fait faire le même travail EN UNE FOIS au serveur, qui
+  //    renvoie la géométrie directement dans chaque chemin. Même
+  //    information, nettement moins d'octets et pas de récursion — donc
+  //    moins de risque de dépasser le délai sur une connexion lente.
+  //
+  // analyserReponseOverpass() accepte les DEUX formats : une réponse déjà
+  // en cache, ou un miroir configuré différemment, reste lisible.
   return `[out:json][timeout:${DELAI_TIMEOUT_S}];
 (
   way["waterway"]${autour};
@@ -79,9 +95,7 @@ export function construireRequeteFacteursHydro(lat, lon, rayon_m = RAYON_RECHERC
   way["geological"="fault"]${autour};
   node["geological"="fault"]${autour};
 );
-out body;
->;
-out skel qt;`;
+out geom;`;
 }
 
 /** Renvoie l'URL complète (GET) pour une requête Overpass QL donnée. */
@@ -122,7 +136,22 @@ export function analyserReponseOverpass(json) {
   const puitsExistants = [];
   const failles = [];
 
+  /**
+   * Géométrie d'un chemin, dans les DEUX formats qu'Overpass sait
+   * produire (voir construireRequeteFacteursHydro) :
+   *  - `out geom;`  : la géométrie est jointe au chemin (`geometry`) —
+   *                   format demandé par ce logiciel depuis le 20/09/2026 ;
+   *  - `out body; >;` : le chemin ne porte que des identifiants de nœuds
+   *                   (`nodes`), à résoudre dans la table ci-dessus —
+   *                   ancien format, conservé pour rester tolérant.
+   */
   function ligneDepuisWay(way) {
+    if (Array.isArray(way.geometry)) {
+      const pts = way.geometry
+        .filter((p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lon))
+        .map((p) => ({ lat: p.lat, lon: p.lon }));
+      return pts.length >= 2 ? pts : null;
+    }
     if (!Array.isArray(way.nodes)) return null;
     const pts = way.nodes.map((id) => noeuds.get(id)).filter(Boolean);
     return pts.length >= 2 ? pts : null;
