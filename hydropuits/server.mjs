@@ -24,6 +24,7 @@
  *   POST /api/clipboard-write    -> { ok }          (404 hors Electron)
  *
  *   GET    /api/sources                 -> registre des sources + état (cache, clé) — accessible sans activation, c'est de la simple consultation
+ *   POST   /api/diagnostic              -> teste chaque service et renvoie un rapport (sans aucune clé) — sans activation, volontairement
  *   POST   /api/cles/:idSource {cle}     -> enregistre une clé saisie par l'utilisateur (réservé aux postes activés, comme les téléchargements)
  *   DELETE /api/cles/:idSource           -> supprime une clé enregistrée
  *   POST   /api/telechargement/:idSource {sommets, parametres} -> démarre (ou récupère du cache) -> { jobId }
@@ -46,6 +47,7 @@ import { SOURCES, obtenirSource } from './src/services/sourcesDonnees.js';
 import { enregistrerCle, supprimerCle, toutesLesClesPresentes } from './src/services/clesLocales.js';
 import { etatGlobalCache } from './src/services/cacheDonnees.js';
 import { demarrerTelechargement, etatTelechargement, annulerTelechargement } from './src/services/telechargementJobs.js';
+import { executerDiagnostic } from './src/services/diagnosticReseau.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // build/ (sortie de `react-scripts build`) est embarqué dans l'app (archive
@@ -130,6 +132,18 @@ function apiSources(res) {
     cle: s.cleRequise ? (cles[s.id] || { presente: false }) : undefined,
   }));
   sendJson(res, 200, { sources });
+}
+
+/** POST /api/diagnostic -> teste chaque service et renvoie un rapport factuel.
+ *  Voir services/diagnosticReseau.js : aucune clé d'API ne figure dans le
+ *  rapport, qui est fait pour être copié et transmis. */
+async function apiDiagnostic(res) {
+  try {
+    const rapport = await executerDiagnostic();
+    sendJson(res, 200, { ok: true, rapport });
+  } catch (e) {
+    sendJson(res, 500, { ok: false, erreur: e.message });
+  }
 }
 
 function lireCorpsJson(req) {
@@ -244,6 +258,11 @@ const server = http.createServer(async (req, res) => {
 
   // --- Sources de données (étape 4) ---
   if (urlPath === '/api/sources' && req.method === 'GET') { apiSources(res); return; }
+
+  // --- Diagnostic réseau (20/09/2026) ---
+  // Volontairement accessible SANS activation : quand rien ne fonctionne,
+  // c'est précisément le moment où l'on doit pouvoir savoir pourquoi.
+  if (urlPath === '/api/diagnostic' && req.method === 'POST') { await apiDiagnostic(res); return; }
 
   {
     const mCle = urlPath.match(/^\/api\/cles\/([^/]+)$/);

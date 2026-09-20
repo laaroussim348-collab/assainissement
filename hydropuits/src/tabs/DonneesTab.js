@@ -24,9 +24,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useI18n } from '../useI18n';
 import { validerPolygone } from '../calculations/polygone.js';
 import {
-  C_BLUE, C_TEAL, C_AMBER, C_RED, C_BORDER, C_HEADER,
-  Panel, Alert, NoData,
+  C_BLUE, C_TEAL, C_AMBER, C_RED, C_BORDER, C_HEADER, TH, TD,
+  Panel, Alert, NoData, ecrirePressePapiers,
 } from '../ui';
+import { formaterRapportTexte } from '../services/diagnosticRapport.js';
 
 const ICONES_SOURCE = {
   'elevation-open-meteo': 'mountain',
@@ -57,6 +58,9 @@ export default function DonneesTab({ etat, majEtat, afficherToast }) {
   // { [idSource]: { statut, progres, erreur, erreurCode, resultat, jobId } }
   const [jobs, setJobs] = useState({});
   const [saisieCle, setSaisieCle] = useState({}); // { [idSource]: texte en cours de saisie }
+  const [diagnostic, setDiagnostic] = useState(null);
+  const [diagEnCours, setDiagEnCours] = useState(false);
+  const [diagErreur, setDiagErreur] = useState(null);
   const minuteurs = useRef({});
 
   const sommets = etat.sommets || [];
@@ -156,16 +160,109 @@ export default function DonneesTab({ etat, majEtat, afficherToast }) {
     }
   }
 
+  /** Teste chaque service depuis CE poste et affiche un rapport factuel.
+   *  Voir services/diagnosticReseau.js : c'est le seul moyen de connaître
+   *  la vraie cause d'un échec, le réseau sortant étant inaccessible
+   *  depuis l'environnement de développement. */
+  async function lancerDiagnostic() {
+    setDiagEnCours(true);
+    setDiagErreur(null);
+    setDiagnostic(null);
+    try {
+      const d = await appelJson('/api/diagnostic', { method: 'POST' });
+      if (!d.ok) throw new Error(d.erreur || 'Diagnostic impossible.');
+      setDiagnostic(d.rapport);
+    } catch (e) {
+      setDiagErreur(tp('diagErreur', { detail: e.message }));
+    } finally {
+      setDiagEnCours(false);
+    }
+  }
+
+  async function copierDiagnostic() {
+    try {
+      await ecrirePressePapiers(formaterRapportTexte(diagnostic));
+      afficherToast?.(t('diagCopie'));
+    } catch (e) {
+      afficherToast?.(`${t('erreur')} ${e.message}`);
+    }
+  }
+
+  // Le diagnostic est rendu dans TOUS les états de l'onglet, y compris
+  // avant qu'un terrain soit tracé : c'est précisément quand rien ne
+  // marche qu'on doit pouvoir savoir pourquoi, sans devoir d'abord
+  // dessiner un polygone.
+  const panneauDiagnostic = (
+    <Panel title={t('diagTitre')} icon="stethoscope" accent={C_AMBER}>
+        <p style={{ fontSize: 11.5, color: '#444', margin: '0 0 8px', lineHeight: 1.6 }}>{t('diagExplication')}</p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+          <button onClick={lancerDiagnostic} disabled={diagEnCours}
+            style={{ padding: '5px 12px', fontSize: 11.5, cursor: diagEnCours ? 'not-allowed' : 'pointer',
+              background: diagEnCours ? '#ccc' : C_AMBER, color: '#fff', border: 'none', borderRadius: 3 }}>
+            {diagEnCours ? t('diagEnCours') : t('diagBouton')}
+          </button>
+          {diagnostic && (
+            <button onClick={copierDiagnostic}
+              style={{ padding: '5px 12px', fontSize: 11.5, cursor: 'pointer',
+                background: '#fff', color: C_BLUE, border: `1px solid ${C_BORDER}`, borderRadius: 3 }}>
+              {t('diagCopier')}
+            </button>
+          )}
+        </div>
+
+        {diagErreur && <Alert tone="error">{diagErreur}</Alert>}
+
+        {diagnostic && (
+          <>
+            {diagnostic.resume.toutBloque && <Alert tone="error">{t('diagToutBloque')}</Alert>}
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10.5 }}>
+              <thead>
+                <tr style={{ background: C_HEADER }}>
+                  <th style={{ ...TH, textAlign: 'left' }}>{t('diagColService')}</th>
+                  <th style={TH}>{t('diagColEtat')}</th>
+                  <th style={TH}>HTTP</th>
+                  <th style={TH}>{t('diagColTemps')}</th>
+                  <th style={{ ...TH, textAlign: 'left' }}>{t('diagColDetail')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {diagnostic.resultats.map((r) => (
+                  <tr key={r.id} style={{ borderBottom: `1px solid ${C_BORDER}` }}>
+                    <td style={{ ...TD, textAlign: 'left' }}>{r.libelle}</td>
+                    <td style={{ ...TD, textAlign: 'center', fontWeight: 'bold',
+                      color: r.statut === 'ok' ? C_TEAL : (r.statut === 'ignore' ? '#888' : C_RED) }}>
+                      {r.statut === 'ok' ? '✓' : (r.statut === 'ignore' ? '—' : '✕')}
+                    </td>
+                    <td style={{ ...TD, textAlign: 'center' }}>{r.codeHttp ?? '—'}</td>
+                    <td style={{ ...TD, textAlign: 'right' }}>{r.duree_ms != null ? `${r.duree_ms} ms` : '—'}</td>
+                    <td style={{ ...TD, textAlign: 'left', wordBreak: 'break-word', color: r.statut === 'echec' ? C_RED : '#555' }}>
+                      {r.erreur || r.detail || (r.extrait || '').replace(/\s+/g, ' ').slice(0, 140)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+        </>
+      )}
+    </Panel>
+  );
+
   if (!terrainPret) {
     return (
       <div>
         <NoData title={t('videDonneesTitre')} hint={t('videDonneesHint')} />
+        {panneauDiagnostic}
       </div>
     );
   }
 
   if (erreurRegistre) {
-    return <Alert tone="error">{tp('srcErreurRegistre', { detail: erreurRegistre })}</Alert>;
+    return (
+      <div>
+        <Alert tone="error">{tp('srcErreurRegistre', { detail: erreurRegistre })}</Alert>
+        {panneauDiagnostic}
+      </div>
+    );
   }
   if (!registre) {
     return <p style={{ fontSize: 12, color: '#888' }}>{t('chargement')}</p>;
@@ -177,6 +274,8 @@ export default function DonneesTab({ etat, majEtat, afficherToast }) {
         <b>{t('srcReglePasDeCompteTitre')}</b><br />
         {t('srcReglePasDeCompteTexte')}
       </Alert>
+
+      {panneauDiagnostic}
 
       {registre.map((s) => {
         const job = jobs[s.id];

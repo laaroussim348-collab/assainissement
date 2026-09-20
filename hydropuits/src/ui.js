@@ -261,7 +261,7 @@ function fixerValeurNative(el, valeur) {
 // renvoyée par server.mjs (échec du presse-papiers Electron natif — voir
 // server.mjs), soit celle de navigator.clipboard (nom/message de
 // l'exception, ex. NotAllowedError) si on est retombé sur ce repli.
-async function ecrirePressePapiers(texte) {
+export async function ecrirePressePapiers(texte) {
   try {
     const r = await fetch('/api/clipboard-write', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texte }),
