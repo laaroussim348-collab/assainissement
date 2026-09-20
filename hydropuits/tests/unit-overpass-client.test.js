@@ -146,4 +146,64 @@ export const casOverpassClient = [
       ],
     }).coursEau.length,
   },
+
+  // ── `out geom` (allègement du 20/09/2026, après délais dépassés réels) ──
+  {
+    libelle: 'Requête : demande « out geom » et PLUS la récursion « >; out skel qt » (moins d’octets, moins de temps serveur)',
+    attendu: true,
+    source: 'cause probable des délais dépassés constatés en usage réel le 20/09/2026',
+    executer: () => {
+      const ql = construireRequeteFacteursHydro(31.63, -8.0, 2000);
+      return ql.includes('out geom;') && !ql.includes('out skel qt') && !ql.includes('\n>;');
+    },
+  },
+  {
+    libelle: 'Réponse « out geom » : la géométrie jointe au chemin est lue directement (2 points)',
+    attendu: 2,
+    source: 'format documenté d’Overpass pour « out geom »',
+    executer: () => analyserReponseOverpass({
+      elements: [
+        { type: 'way', id: 7, tags: { waterway: 'stream' }, geometry: [{ lat: 31.6, lon: -8.0 }, { lat: 31.61, lon: -8.01 }] },
+      ],
+    }).coursEau[0].length,
+  },
+  {
+    libelle: 'Réponse « out geom » : les DEUX formats donnent exactement la même géométrie (non-régression)',
+    attendu: true,
+    source: 'le parseur reste tolérant à l’ancien format (réponse en cache, miroir configuré autrement)',
+    executer: () => {
+      const geom = analyserReponseOverpass({
+        elements: [{ type: 'way', id: 7, tags: { waterway: 'stream' }, geometry: [{ lat: 31.6, lon: -8.0 }, { lat: 31.61, lon: -8.01 }] }],
+      }).coursEau[0];
+      const legacy = analyserReponseOverpass({
+        elements: [
+          { type: 'node', id: 1, lat: 31.6, lon: -8.0 },
+          { type: 'node', id: 2, lat: 31.61, lon: -8.01 },
+          { type: 'way', id: 7, nodes: [1, 2], tags: { waterway: 'stream' } },
+        ],
+      }).coursEau[0];
+      return JSON.stringify(geom) === JSON.stringify(legacy);
+    },
+  },
+  {
+    libelle: 'Réponse « out geom » : une faille en chemin est lue par sa géométrie jointe',
+    attendu: 1,
+    source: 'même chemin de code que les cours d’eau',
+    executer: () => analyserReponseOverpass({
+      elements: [
+        { type: 'way', id: 9, tags: { geological: 'fault' }, geometry: [{ lat: 31.6, lon: -8.0 }, { lat: 31.7, lon: -8.1 }] },
+      ],
+    }).failles.length,
+  },
+  {
+    libelle: 'Réponse « out geom » : un point de géométrie incomplet est ignoré, jamais transformé en NaN',
+    attendu: 2,
+    source: '§5 — jamais une coordonnée inventée pour compléter une géométrie',
+    executer: () => analyserReponseOverpass({
+      elements: [
+        { type: 'way', id: 7, tags: { waterway: 'stream' },
+          geometry: [{ lat: 31.6, lon: -8.0 }, { lat: null, lon: null }, { lat: 31.62, lon: -8.02 }] },
+      ],
+    }).coursEau[0].length,
+  },
 ];

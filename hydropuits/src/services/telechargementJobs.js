@@ -32,6 +32,7 @@ import * as openTopographyClient from './openTopographyClient.js';
 import { obtenirSource } from './sourcesDonnees.js';
 import { obtenirCle } from './clesLocales.js';
 import { clefCache, lireCache, ecrireCache } from './cacheDonnees.js';
+import { fetchJsonRobuste, fetchTexteRobuste } from './reseauRobuste.js';
 
 const jobs = new Map();
 
@@ -72,60 +73,60 @@ function verifierAnnulation(job) {
   if (job.annule) throw new ErreurTelechargement('ANNULE', 'Téléchargement annulé.');
 }
 
-/** Un fetch par appel a son PROPRE contrôleur (timeout local), mais reste
- *  annulable par le contrôleur du job (écouté en plus) — voir le
- *  commentaire au-dessus de demarrerTelechargement pour pourquoi un seul
- *  contrôleur partagé entre tous les lots poserait problème (le repli
- *  Overpass sur le miroir, notamment, ne doit pas hériter d'un abandon
- *  déclenché par le timeout de la tentative précédente). */
-function fetchAvecAnnulation(url, job, timeoutMs, options = {}) {
-  return new Promise((resolve, reject) => {
-    const controleur = new AbortController();
-    const surAnnulationJob = () => controleur.abort();
-    job.controleur.signal.addEventListener('abort', surAnnulationJob);
-    const minuteur = setTimeout(() => controleur.abort(), timeoutMs);
-    fetch(url, { signal: controleur.signal, ...options })
-      .then(resolve, reject)
-      .finally(() => {
-        clearTimeout(minuteur);
-        job.controleur.signal.removeEventListener('abort', surAnnulationJob);
-      });
-  });
+/**
+ * Les appels réseau passent tous par reseauRobuste.js (réessais,
+ * temporisation, respect de Retry-After) depuis le 20/09/2026 : sans
+ * réessai, UN incident passager sur les ~40 requêtes d'altimétrie
+ * suffisait à faire échouer tout le téléchargement. Le job expose son
+ * signal d'annulation, pour que le bouton « Annuler » interrompe aussi
+ * bien une requête en vol qu'une attente entre deux réessais.
+ *
+ * `job.reessais` compte les réessais effectués : l'interface l'affiche,
+ * pour qu'une lenteur due à une reprise ne passe pas pour un blocage
+ * (§5 — ne jamais laisser croire que le logiciel est figé).
+ */
+function optionsReseau(job, timeoutMs) {
+  return {
+    timeoutMs,
+    signalExterne: job.controleur.signal,
+    surReessai: () => { job.reessais = (job.reessais || 0) + 1; },
+  };
 }
 
 async function fetchJson(url, job, timeoutMs = 30000) {
-  let r;
   try {
-    r = await fetchAvecAnnulation(url, job, timeoutMs);
+    return await fetchJsonRobuste(url, optionsReseau(job, timeoutMs));
   } catch (e) {
     verifierAnnulation(job);
-    throw new Error(`Connexion impossible ou délai dépassé vers ${new URL(url).hostname} : ${e.message}`);
+    throw e;
   }
-  if (!r.ok) {
-    let detail = '';
-    try { detail = (await r.text()).slice(0, 300); } catch { /* corps illisible : le code HTTP suffit */ }
-    throw new Error(`${new URL(url).hostname} → HTTP ${r.status}${detail ? ' — ' + detail : ''}`);
-  }
-  return r.json();
 }
 
 async function fetchText(url, job, timeoutMs = 30000) {
-  let r;
   try {
-    r = await fetchAvecAnnulation(url, job, timeoutMs);
+    return await fetchTexteRobuste(url, optionsReseau(job, timeoutMs));
   } catch (e) {
     verifierAnnulation(job);
-    throw new Error(`Connexion impossible ou délai dépassé vers ${new URL(url).hostname} : ${e.message}`);
+    throw e;
   }
-  if (!r.ok) {
-    let detail = '';
-    try { detail = (await r.text()).slice(0, 300); } catch { /* corps illisible */ }
-    throw new Error(`${new URL(url).hostname} → HTTP ${r.status}${detail ? ' — ' + detail : ''}`);
-  }
-  return r.text();
 }
 
 // ── Exécuteurs, un par source (voir sourcesDonnees.js) ─────────────────
+
+/**
+ * Pause entre deux lots d'altimétrie, en millisecondes.
+ *
+ * ORIGINE : Open-Meteo documente une limite d'usage gratuit de 600
+ * requêtes/minute (soit 10/s). Un terrain à 4000 points fait 40 requêtes
+ * : envoyées sans aucune pause, elles partent en rafale et rien ne
+ * distingue notre rafale d'un usage abusif côté serveur. 120 ms les
+ * étale à ~8/s, sous la limite documentée, pour un surcoût total de
+ * moins de 5 s sur le plus gros terrain — invisible à l'usage, et bien
+ * moins coûteux qu'un HTTP 429 qui ferait repartir tout le lot.
+ */
+export const PAUSE_ENTRE_LOTS_MS = 120;
+
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function executerElevation(job, sommets, parametres) {
   const grille = elevationClient.calculerGrilleElevation(
@@ -135,6 +136,7 @@ async function executerElevation(job, sommets, parametres) {
   const altitudes = [];
   for (let i = 0; i < lots.length; i++) {
     verifierAnnulation(job);
+    if (i > 0) await pause(PAUSE_ENTRE_LOTS_MS);
     const url = elevationClient.buildElevationUrl(lots[i].map((p) => [p.lat, p.lon]));
     const json = await fetchJson(url, job, 20000);
     altitudes.push(...elevationClient.parseElevationResponse(json));
@@ -270,7 +272,7 @@ export function demarrerTelechargement(idSource, sommets, parametres = {}) {
 
   const job = {
     statut: 'en_cours', progres: 0, erreur: null, erreurCode: null, annule: false,
-    controleur: new AbortController(), resultat: null,
+    reessais: 0, controleur: new AbortController(), resultat: null,
   };
   jobs.set(jobId, job);
 
@@ -299,6 +301,7 @@ export function etatTelechargement(jobId) {
   if (!job) return null;
   return {
     statut: job.statut, progres: job.progres, erreur: job.erreur, erreurCode: job.erreurCode,
+    reessais: job.reessais || 0,
     resultat: job.statut === 'termine' ? job.resultat : null,
   };
 }

@@ -638,6 +638,61 @@ raisonnement à partir du message d'erreur réel transmis par
 l'utilisateur ont guidé chaque correction. **Confirmation par
 l'utilisateur, sur son propre poste, encore attendue.**
 
+**Deuxième mise à jour du 20/09/2026 — l'utilisateur signale que les
+téléchargements échouent toujours.** Deux corrections faites à partir
+d'une simple capture d'écran n'ont pas suffi, et c'était prévisible :
+un message d'erreur d'une ligne ne dit ni le code HTTP, ni le temps de
+réponse, ni ce que le serveur a réellement renvoyé. Plutôt que de
+deviner une troisième fois, quatre changements ont été faits, dont
+aucun ne dépend d'une hypothèse sur la cause :
+
+1. **Diagnostic réseau intégré** (`services/diagnosticReseau.js`,
+   `services/diagnosticRapport.js`, bouton dans l'onglet Données).
+   Teste les 9 cibles (5 API, les 2 instances Overpass, les 2 fonds de
+   carte) DEPUIS LE POSTE DE L'UTILISATEUR et rapporte, pour chacune :
+   code HTTP, temps de réponse, taille, et les 300 premiers caractères
+   BRUTS de la réponse. Rapport copiable en un clic. **Aucune clé d'API
+   n'y figure** — double censure testée sous 7 angles
+   (`tests/unit-diagnostic-reseau.test.js`), une fuite de clé étant le
+   seul vrai danger d'un rapport destiné à être transmis. Le panneau
+   s'affiche même sans terrain tracé : c'est quand rien ne marche qu'on
+   doit pouvoir savoir pourquoi.
+2. **Réessais** (`services/reseauRobuste.js`) : il n'y en avait AUCUN
+   dans tout le logiciel. Le téléchargement d'altimétrie enchaîne
+   jusqu'à 40 requêtes ; un seul incident passager sur les 40 — coupure
+   d'une seconde, 503 momentané, quota 429 — faisait échouer la
+   totalité, sans conserver ce qui avait déjà répondu. Sur une connexion
+   mobile ou lente, c'est le cas le plus probable, pas le cas rare.
+   Désormais : 3 tentatives, temporisation exponentielle (1 s, 2 s,
+   4 s), respect de `Retry-After`, et **aucun réessai sur une erreur
+   définitive** (401, 403, 404 : réessayer une clé invalide ne la rendra
+   pas valide). Pause de 120 ms entre les lots d'altimétrie, pour rester
+   sous les 600 requêtes/minute documentées par Open-Meteo.
+3. **Requête Overpass allégée** : `out geom;` remplace
+   `out body; >; out skel qt;`. La récursion `>;` était l'étape la plus
+   coûteuse côté serveur ET la plus volumineuse sur le réseau (un cours
+   d'eau de 200 points renvoyé comme 200 objets JSON distincts à
+   recoller côté client). `out geom;` donne la même information en une
+   fois, avec nettement moins d'octets — cause plausible des délais
+   dépassés sur connexion lente. Le parseur accepte les deux formats.
+4. **Un résultat même quand une source tombe** : c'est le changement le
+   plus visible. Un facteur actif dont la source n'avait pas répondu
+   invalidait TOUTES les cellules (règle voulue de `favorabilite.js` :
+   pas de moyenne partielle silencieuse), si bien qu'une seule source en
+   panne ne dégradait pas le résultat mais le **supprimait entièrement**
+   — l'utilisateur n'obtenait plus rien. Le facteur est maintenant
+   écarté, les poids AHP renormalisés sur les restants, et la liste des
+   facteurs écartés affichée à l'écran. Les deux propriétés qui rendent
+   cela honnête sont testées : somme des poids exactement 1, et rapports
+   entre facteurs conservés inchangés (`tests/unit-facteurs-criteres.test.js`).
+
+Le diagnostic a été exercé de bout en bout depuis cet environnement
+(serveur réel, interface réelle pilotée par Playwright) : il rapporte
+correctement les 9 cibles en échec avec `HTTP 403 — Host not in
+allowlist`, détecte que TOUT est bloqué, et le dit. C'est précisément le
+comportement attendu ici — et la preuve que le rapport dira la vérité
+sur un poste où, lui, le réseau fonctionne.
+
 Conséquence et mitigation, inchangées pour le reste :
 - Construction d'URL et analyse de réponse restent testées sur des
   réponses **synthétiques reproduisant le format documenté** de chaque
