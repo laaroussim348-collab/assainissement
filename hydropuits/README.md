@@ -153,7 +153,7 @@ clés d'API (`src/services/clesLocales.js`).
 | Open-Meteo Elevation (MNT ≈ 90 m) | non | opérationnelle |
 | Overpass API (OpenStreetMap — cours d'eau, sources, puits, failles) | non | opérationnelle |
 | NASA POWER (pluviométrie) | non | opérationnelle |
-| SoilGrids / ISRIC (texture du sol) | non | ⚠️ service en pause côté ISRIC (vérifié le 19/09/2026), client prêt |
+| SoilGrids / ISRIC (texture du sol) | non | opérationnelle (service rétabli, vérifié le 20/09/2026 par le diagnostic réseau) |
 | OpenTopography (MNT 30 m) | **oui** | opérationnelle une fois la clé collée par l'utilisateur |
 
 **Règle absolue respectée à la lettre (§3.3)** : le logiciel ne crée jamais
@@ -539,252 +539,89 @@ Conséquence résiduelle pour l'utilisateur : un fichier `.xlsx` doit
 encore être réenregistré en CSV avant import (les coordonnées, elles,
 fonctionnent dans les 6 systèmes listés au §2).
 
-### 2. Lambert Merchich et UTM : implémentés le 20/09/2026, à partir de paramètres vérifiés
+### 2. Coordonnées : Lambert Merchich et UTM opérationnels, deux datums historiques désactivés
 
-`calculations/coordonnees.js` convertit désormais WGS84 ↔ 6 systèmes :
-UTM WGS84 (n'importe quel fuseau) et les 4 zones Lambert Merchich (Nord,
-Sud, Sahara Nord, Sahara Sud) — branché dans `TerrainTab.js` (saisie au
-clavier ET import CSV ; le tracé à la carte reste en WGS84, Leaflet
-travaillant nativement dans ce système).
+`calculations/coordonnees.js` convertit WGS84 ↔ **6 systèmes** : UTM
+WGS84 (tout fuseau) et les 4 zones Lambert Merchich (Nord, Sud, Sahara
+Nord, Sahara Sud). Branché dans `TerrainTab.js` pour la saisie au
+clavier ET l'import CSV ; le tracé à la carte reste en WGS84, Leaflet
+travaillant nativement dans ce système.
 
-**Méthode** : (1) conversion géodésique ↔ géocentrique cartésien par
-formule fermée standard ; (2) changement de datum Merchich↔WGS84 par
-translation géocentrique à 3 paramètres (EPSG:1166, précision ±7 m
-annoncée par l'EPSG lui-même — pas un calage cadastral centimétrique,
-mais très en dessous de la résolution utile de ce logiciel, grille
-≈ 90 m) ; (3) projection Lambert conforme conique à 1 parallèle
-(EPSG 9801, formules de Snyder 1987) ou Mercator transverse (UTM, mêmes
-formules, précision <1 mm à moins de 3° du méridien central — pas la
-série de Krüger à l'ordre n⁶ utilisée pour une précision géodésique
-extrême, inutile ici).
+Précision : le changement de datum Merchich↔WGS84 repose sur une
+translation géocentrique à 3 paramètres (EPSG:1166), annoncée à **±7 m**
+par l'EPSG lui-même. Ce n'est pas un calage cadastral centimétrique,
+mais c'est très en dessous de la résolution utile du logiciel (grille
+≈ 90 m). Chaque paramètre a été recoupé sur au moins 3 miroirs
+indépendants du registre EPSG, et le calcul est cross-validé contre le
+moteur géodésique de Karney (`geodesie.js`) à 7 ppm près.
 
-**Vérification des paramètres** (20/09/2026, `WebSearch` — `WebFetch`
-restant bloqué dans cet environnement pour epsg.io/epsg.org eux-mêmes) :
-chaque paramètre (ellipsoïde Clarke 1880 IGN, lat₀/lon₀/k₀/FE/FN des 4
-zones, décalage de datum) recoupé sur au moins 3 miroirs indépendants du
-registre EPSG (dont OSGeo/PROJ-CRS-Explorer, GDAL, JuliaEarth/
-CoordRefSystems.jl) plus un support de cours de géodésie universitaire
-marocain — voir l'en-tête de `coordonnees.js` pour le détail complet,
-y compris un site tiers non officiel repéré comme donnant des
-paramètres ERRONÉS et délibérément écarté comme source.
+**Restent désactivés** : `utm-point58` et `utm-nordsahara59`, deux
+datums historiques propres au Sahara occidental, dont les paramètres de
+changement de datum n'ont pas pu être vérifiés avec la même rigueur. Ils
+sont visibles dans le sélecteur, désactivés, avec la raison affichée —
+jamais un résultat inventé (§5).
 
-**Vérification du calcul** (indépendante des paramètres eux-mêmes,
-`tests/unit-coordonnees.test.js`) : round-trip WGS84↔système pour les 6
-systèmes (écart < 1 mm), l'origine de chaque zone Lambert reprojette
-exactement sur (FE, FN), et — cross-validation la plus forte — la
-distance projetée le long du parallèle standard d'une zone Lambert,
-divisée par k₀, correspond à la distance géodésique **calculée par le
-moteur de Karney déjà validé** (`geodesie.js`) à 7 ppm près : c'est la
-propriété mathématique définissant une projection conforme au parallèle
-standard, vérifiée contre un oracle indépendant, pas juste un round-trip
-interne au même code.
+**Non concerné** : `calculations/grilleLocale.js`, la grille de CALCUL
+interne (pente, TWI, densités), continue d'utiliser un plan tangent
+local et non ces formules. Sa distorsion est mesurée (~10⁻⁵ à l'échelle
+d'une parcelle, `tests/unit-grille-locale.test.js`), donc négligeable ;
+le remplacement reste possible (signatures conçues pour ça) mais n'a pas
+lieu d'être fait sans raison.
 
-**Ce qui reste désactivé** : `utm-point58` et `utm-nordsahara59`, deux
-datums historiques propres au Sahara occidental dont les paramètres de
-changement de datum n'ont pas pu être vérifiés avec la même rigueur —
-visibles dans le sélecteur, désactivés, raison affichée, comme
-auparavant pour l'ensemble des systèmes non-WGS84.
+→ Détail de l'implémentation et de la vérification des paramètres :
+[`docs/journal/2026-09-20-coordonnees-lambert-utm.md`](docs/journal/2026-09-20-coordonnees-lambert-utm.md).
 
-**Ce qui n'a volontairement PAS changé** : `calculations/grilleLocale.js`
-(la grille de CALCUL interne — pente/TWI/densités, §4/§5 ci-dessus)
-continue d'utiliser son plan tangent local, pas les formules UTM
-ci-dessus. Un remplacement reste possible (les signatures
-`versLocal`/`versGeographique` ont été conçues pour ça) mais n'a pas été
-fait dans cette correction : la distorsion déjà mesurée de cette
-approche (~10⁻⁵, tests/unit-grille-locale.test.js) est sans rapport
-avec le bug réel signalé (la saisie utilisateur, pas la grille de
-calcul), et le risque d'un changement non sollicité dans un module qui
-alimente tout le pipeline de facteurs dépassait le bénéfice pratique.
+### 3. Le réseau sortant est bloqué dans l'environnement de développement
 
-### 3. Réseau sortant bloqué dans cet environnement de développement — mais partiellement vérifié depuis, en usage réel
+Les 5 clients réseau ne peuvent PAS être exercés contre leurs vrais
+serveurs depuis l'environnement où ce logiciel est développé : la
+politique de sortie du bac à sable refuse ces hôtes (`HTTP 403 — Host
+not in allowlist`, vérifié sur chacun). Ce n'est pas propre à ce projet
+— HydroCrue portait déjà la même réserve sur son client NASA POWER.
 
-Aucun des 5 clients réseau ne peut être exercé contre son vrai serveur
-distant DEPUIS CET ENVIRONNEMENT DE DÉVELOPPEMENT : le bac à sable
-bloque toute connexion sortante hors d'une liste précise (registre npm,
-dépôts de paquets), confirmée en observant les rejets de connexion du
-proxy sortant. Ce n'est pas propre à ce projet — HydroCrue portait déjà
-la même réserve sur son client NASA POWER.
+Ce que cela implique, et comment c'est compensé :
 
-**Mise à jour du 20/09/2026 — premiers résultats réels** : un
-utilisateur exécutant HydroPuits sur un poste avec accès réseau normal a
-transmis des captures d'écran de l'onglet Données. Trois bugs RÉELS en
-ont été identifiés et corrigés (recherches `WebSearch` croisant plusieurs
-sources indépendantes pour chacun, aucune donnée réelle recopiée
-aveuglément) :
+- **Construction d'URL et analyse des réponses** sont testées sur des
+  réponses synthétiques reproduisant le format documenté de chaque API
+  (`tests/unit-*-client.test.js`). Une exception : l'en-tête de grille
+  ASCII d'OpenTopography est, lui, une réponse **réelle**, capturée chez
+  un utilisateur (`ASCII_GRID_REEL_SANS_NODATA`).
+- **Le pipeline complet** (téléchargement → grille → dérivées →
+  hydrologie → géométrie linéaire → reclassement → AHP → carte) est
+  vérifié de bout en bout en préremplissant le cache disque du serveur
+  (`cacheDonnees.js`) avec des données synthétiques mais conformes au
+  format réel, puis en pilotant l'application avec Playwright.
+- **Un diagnostic réseau est intégré au logiciel** (onglet Données,
+  `services/diagnosticReseau.js`) : il teste les 9 cibles depuis le
+  poste de l'utilisateur et rapporte, pour chacune, le code HTTP, le
+  temps de réponse et les 300 premiers caractères bruts de la réponse.
+  Le rapport est copiable et **ne contient aucune clé d'API**. C'est ce
+  qui permet de corriger une panne réseau sans la deviner — et
+  l'expérience de septembre 2026 a montré que deviner produit des
+  correctifs à côté de la cible.
 
-- **Overpass** (« This operation was aborted » sur les 2 miroirs) :
-  délai côté serveur porté de 60 à 90 s, délai côté client de 70 à
-  120 s — les instances publiques peuvent être plus lentes que prévu en
-  période de charge (`overpassClient.js`, `telechargementJobs.js`).
-- **SoilGrids** (« propriété 'clay' absente pour la profondeur 0-30cm »)
-  : bug de conception identifié ET confirmé indépendamment par
-  recherche sur le code source réel d'un client tiers (`ncss-tech/
-  soilDB`, R/CRAN) — SoilGrids ne publie **aucune** granule native
-  « 0-30cm » (seulement 0-5/5-15/15-30/30-60/60-100/100-200 cm) ; le
-  client interroge désormais les 3 granules qui couvrent 0-30 cm et
-  calcule une moyenne pondérée par leur épaisseur (`soilGridsClient.js`).
-- **OpenTopography** (« nodata_value manquant ») : le parseur
-  n'acceptait que la convention d'en-tête `xllcorner`/`yllcorner` ; la
-  variante `xllcenter`/`yllcenter`, également documentée par la
-  spécification Esri du format ASCII Grid, est désormais acceptée
-  (`openTopographyClient.js`) — cause probable mais pas formellement
-  confirmée (le portail OpenTopography restait bloqué depuis CET
-  environnement pour capturer une réponse brute réelle).
+**À revérifier avant mise en production** : les formats de réponse réels
+n'ont, pour la plupart, jamais été vus par ce code — seulement leur
+documentation.
 
-Ce que cette correction NE remplace PAS : aucun de ces 3 clients n'a
-encore été revérifié contre son vrai serveur DEPUIS cet environnement de
-développement (toujours bloqué) — seule la recherche croisée et le
-raisonnement à partir du message d'erreur réel transmis par
-l'utilisateur ont guidé chaque correction. **Confirmation par
-l'utilisateur, sur son propre poste, encore attendue.**
+→ Historique des pannes réelles rencontrées et de leurs causes :
+[`docs/journal/2026-09-20-pannes-reseau.md`](docs/journal/2026-09-20-pannes-reseau.md).
 
-**Deuxième mise à jour du 20/09/2026 — l'utilisateur signale que les
-téléchargements échouent toujours.** Deux corrections faites à partir
-d'une simple capture d'écran n'ont pas suffi, et c'était prévisible :
-un message d'erreur d'une ligne ne dit ni le code HTTP, ni le temps de
-réponse, ni ce que le serveur a réellement renvoyé. Plutôt que de
-deviner une troisième fois, quatre changements ont été faits, dont
-aucun ne dépend d'une hypothèse sur la cause :
+### 4. Lithologie/sol : le sable est un proxy, pas une lithologie
 
-1. **Diagnostic réseau intégré** (`services/diagnosticReseau.js`,
-   `services/diagnosticRapport.js`, bouton dans l'onglet Données).
-   Teste les 9 cibles (5 API, les 2 instances Overpass, les 2 fonds de
-   carte) DEPUIS LE POSTE DE L'UTILISATEUR et rapporte, pour chacune :
-   code HTTP, temps de réponse, taille, et les 300 premiers caractères
-   BRUTS de la réponse. Rapport copiable en un clic. **Aucune clé d'API
-   n'y figure** — double censure testée sous 7 angles
-   (`tests/unit-diagnostic-reseau.test.js`), une fuite de clé étant le
-   seul vrai danger d'un rapport destiné à être transmis. Le panneau
-   s'affiche même sans terrain tracé : c'est quand rien ne marche qu'on
-   doit pouvoir savoir pourquoi.
-2. **Réessais** (`services/reseauRobuste.js`) : il n'y en avait AUCUN
-   dans tout le logiciel. Le téléchargement d'altimétrie enchaîne
-   jusqu'à 40 requêtes ; un seul incident passager sur les 40 — coupure
-   d'une seconde, 503 momentané, quota 429 — faisait échouer la
-   totalité, sans conserver ce qui avait déjà répondu. Sur une connexion
-   mobile ou lente, c'est le cas le plus probable, pas le cas rare.
-   Désormais : 3 tentatives, temporisation exponentielle (1 s, 2 s,
-   4 s), respect de `Retry-After`, et **aucun réessai sur une erreur
-   définitive** (401, 403, 404 : réessayer une clé invalide ne la rendra
-   pas valide). Pause de 120 ms entre les lots d'altimétrie, pour rester
-   sous les 600 requêtes/minute documentées par Open-Meteo.
-3. **Requête Overpass allégée** : `out geom;` remplace
-   `out body; >; out skel qt;`. La récursion `>;` était l'étape la plus
-   coûteuse côté serveur ET la plus volumineuse sur le réseau (un cours
-   d'eau de 200 points renvoyé comme 200 objets JSON distincts à
-   recoller côté client). `out geom;` donne la même information en une
-   fois, avec nettement moins d'octets — cause plausible des délais
-   dépassés sur connexion lente. Le parseur accepte les deux formats.
-4. **Un résultat même quand une source tombe** : c'est le changement le
-   plus visible. Un facteur actif dont la source n'avait pas répondu
-   invalidait TOUTES les cellules (règle voulue de `favorabilite.js` :
-   pas de moyenne partielle silencieuse), si bien qu'une seule source en
-   panne ne dégradait pas le résultat mais le **supprimait entièrement**
-   — l'utilisateur n'obtenait plus rien. Le facteur est maintenant
-   écarté, les poids AHP renormalisés sur les restants, et la liste des
-   facteurs écartés affichée à l'écran. Les deux propriétés qui rendent
-   cela honnête sont testées : somme des poids exactement 1, et rapports
-   entre facteurs conservés inchangés (`tests/unit-facteurs-criteres.test.js`).
+`facteurs.js` utilise le **pourcentage de sable** (SoilGrids, moyenne
+pondérée par épaisseur sur 0-30 cm) comme proxy de favorabilité
+lithologique — un sol sableux est plus perméable qu'un sol argileux,
+principe de base de la physique des sols. Mais ce n'est **pas** une
+vraie lithologie : ni la nature de la roche, ni la profondeur au
+substratum, ni l'état de fracturation n'entrent dans cette valeur. Un
+socle granitique fracturé sous 20 cm de sable et un sable dunaire
+profond donnent ici la même note.
 
-Le diagnostic a été exercé de bout en bout depuis cet environnement
-(serveur réel, interface réelle pilotée par Playwright) : il rapporte
-correctement les 9 cibles en échec avec `HTTP 403 — Host not in
-allowlist`, détecte que TOUT est bloqué, et le dit. C'est précisément le
-comportement attendu ici — et la preuve que le rapport dira la vérité
-sur un poste où, lui, le réseau fonctionne.
-
-### 3 bis. Le diagnostic a tranché : les deux vraies causes, corrigées sur preuve
-
-L'utilisateur a exécuté le diagnostic sur son poste et transmis le
-rapport le 20/09/2026. **6 cibles sur 9 fonctionnaient** — Open-Meteo,
-NASA POWER, SoilGrids, les deux fonds de carte et OpenTopography
-répondaient toutes `HTTP 200`. Les deux seules pannes réelles n'avaient
-AUCUN rapport avec ce qui avait été supposé lors des deux corrections
-précédentes. C'est la justification a posteriori du diagnostic :
-**deviner avait produit deux corrections à côté de la cible ; mesurer a
-donné les deux causes en un seul aller-retour.**
-
-**Cause n° 1 — Overpass refusait nos requêtes faute de `User-Agent`**
-(ce n'était donc pas un problème de délai) :
-
-```
-overpass.kumi.systems → HTTP 429
-  « Please include a meaningful User-Agent string with your requests
-    to avoid rate-limiting. »
-overpass-api.de       → HTTP 406 Not Acceptable (Apache)
-```
-
-Vérifié dans cet environnement : `fetch` de Node 22 envoie
-`User-Agent: node` — littéralement — et `Accept: */*` (correct, donc la
-négociation de contenu n'est pas en cause). Un User-Agent par défaut est
-exactement ce que ces instances filtrent. `reseauRobuste.js` envoie
-désormais `HydroPuits/0.1 (…)` sur **toute** requête sortante ; cela
-répond aussi à la politique d'usage d'OSM/Overpass, qui exige qu'un
-client s'identifie. La chaîne ne contient ni identifiant de poste ni
-donnée personnelle (§3.3), et cela est testé. L'envoi effectif de
-l'en-tête a été vérifié sur un serveur HTTP local — pas seulement dans
-une constante.
-
-**Cause n° 2 — OpenTopography ne déclare PAS de `NODATA_value`.** La
-réponse brute capturée (emprise de 0,01° au Maroc, COP30) commence
-ainsi :
-
-```
-ncols        36
-nrows        36
-xllcorner    -8.000138900000
-yllcorner    31.630138900000
-cellsize     0.000277777778
-453.78460693359375 454.75750732421875 456.62158203125 ...
-```
-
-Cinq lignes d'en-tête, puis les altitudes — **aucune ligne
-`NODATA_value`**, alors que le parseur l'exigeait. C'est conforme à la
-spécification Esri, qui donne ce champ pour optionnel (défaut -9999), et
-un générateur l'omet légitimement quand aucune cellule n'est vide — le
-cas d'un MNT en plein continent. Le champ est donc devenu facultatif :
-en son absence, la convention -9999 est appliquée **et affichée à
-l'écran** (`srcAvtNodataAbsent`), jamais substituée en silence (§5).
-Cet en-tête réel est désormais un cas de test (`ASCII_GRID_REEL_SANS_NODATA`)
-— la seule réponse RÉELLE dont ce projet dispose, tout le reste étant
-synthétique.
-
-À noter : la variante `xllcenter`/`yllcenter` corrigée lors du tour
-précédent n'était **pas** en cause ici (le fichier réel utilise bien
-`xllcorner`). Le correctif reste valide et utile, mais il visait à côté.
-
-**Deux conséquences heureuses du même rapport :**
-- **SoilGrids est rétablie** (`HTTP 200` en 632 ms, réponse conforme).
-  Le marquage `indisponibleTemporairement` est retiré et le facteur
-  Lithologie/sol redevient **actif par défaut** : l'analyse repose
-  désormais sur les **8** facteurs, non plus 7.
-- **OpenTopography met 11,3 s pour 36×36 cellules.** Le service
-  rééchantillonne à la demande, donc le temps croît avec la surface : le
-  délai est porté de 60 s à 180 s, sur mesure et non par précaution
-  vague.
-
-Conséquence et mitigation, inchangées pour le reste :
-- Construction d'URL et analyse de réponse restent testées sur des
-  réponses **synthétiques reproduisant le format documenté** de chaque
-  API (voir chaque `tests/unit-*-client.test.js`).
-- Le pipeline COMPLET (téléchargement → grille → dérivées → hydrologie
-  → géométrie linéaire → reclassement → AHP → carte) a été vérifié de
-  bout en bout de façon réaliste en préremplissant le cache disque du
-  serveur (`cacheDonnees.js`) avec des données synthétiques MAIS
-  conformes au format réel, puis en pilotant l'application avec
-  Playwright (voir étapes 7 et 8 ci-dessus).
-
-### 4. Lithologie/sol : simplification assumée, source en pause
-
-`facteurs.js` utilise le **pourcentage de sable** (SoilGrids, 0-30 cm)
-comme proxy de favorabilité lithologique — un sol sableux est plus
-perméable qu'un sol argileux, principe de base de la physique des sols,
-mais ce n'est PAS une vraie lithologie (nature de la roche, profondeur
-au substratum). De plus, l'API ISRIC SoilGrids était **en pause**
-(« temporarily paused ») au 19/09/2026 — la source reste marquée
-`indisponibleTemporairement` dans `sourcesDonnees.js`, et le facteur
-Lithologie/sol est **désactivé par défaut** dans l'onglet Critères tant
-qu'elle ne l'est pas.
+Le facteur est actif par défaut depuis que le service ISRIC est rétabli
+(vérifié le 20/09/2026). S'il retombait en panne, le facteur serait
+écarté automatiquement et les poids renormalisés sur les autres, avec la
+mention affichée à l'écran — pas de blocage du calcul.
 
 ### 5. Lithologie et pluviométrie : valeurs ponctuelles, pas de vraies grilles
 
