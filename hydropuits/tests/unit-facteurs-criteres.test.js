@@ -56,13 +56,15 @@ export const casFacteursCriteres = [
     },
   },
   {
-    libelle: 'Panne Overpass : il reste 4 facteurs calculables sur les 7 actifs par défaut',
-    attendu: 4, source: '7 actifs par défaut (lithologieSol exclu) moins les 3 d’Overpass',
+    libelle: 'Panne Overpass : il reste 5 facteurs calculables sur les 8 actifs par défaut',
+    attendu: 5, source: '8 actifs par défaut moins les 3 qui dépendent d’Overpass',
     executer: () => actifsDisponibles(etatVide, PANNE_OVERPASS).length,
   },
   {
-    libelle: 'Actifs par défaut : 7 facteurs (lithologieSol exclu, sa source étant en pause)',
-    attendu: 7, source: 'voir FACTEURS_ACTIFS_PAR_DEFAUT', executer: () => FACTEURS_ACTIFS_PAR_DEFAUT.length,
+    libelle: 'Actifs par défaut : les 8 facteurs (SoilGrids rétablie, vérifiée le 20/09/2026)',
+    attendu: 8,
+    source: 'diagnostic réel du 20/09/2026 : rest.isric.org répond HTTP 200 — le facteur Lithologie/sol redevient actif',
+    executer: () => FACTEURS_ACTIFS_PAR_DEFAUT.length,
   },
 
   // ── Renormalisation : les deux propriétés qui la rendent honnête ──

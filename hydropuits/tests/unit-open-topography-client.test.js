@@ -40,6 +40,23 @@ NODATA_value  -9999
 120 121 122 123
 `;
 
+// En-tête RÉEL d'OpenTopography, capturé par le diagnostic réseau depuis
+// le poste d'un utilisateur le 20/09/2026 (emprise 0,01° au Maroc,
+// COP30). Reproduit ici À L'IDENTIQUE pour les 5 lignes d'en-tête et les
+// 4 premières altitudes — c'est la seule réponse RÉELLE dont ce projet
+// dispose, tout le reste étant synthétique. Noter l'absence totale de
+// NODATA_value : c'est exactement ce qui faisait échouer le parseur.
+// Grille réduite à 4×2 ici (le fichier réel fait 36×36) : ce qui est
+// testé est la lecture de l'en-tête, pas la taille.
+const ASCII_GRID_REEL_SANS_NODATA = `ncols        4
+nrows        2
+xllcorner    -8.000138900000
+yllcorner    31.630138900000
+cellsize     0.000277777778
+453.78460693359375 454.75750732421875 456.62158203125 455.282257080078125
+453.024444580078125 453.762115478515625 453.166748046875 452.24188232421875
+`;
+
 export const casOpenTopographyClient = [
   // ── buildOpenTopographyUrl ──
   {
@@ -157,6 +174,52 @@ export const casOpenTopographyClient = [
       const gCorner = parseAsciiGrid(ASCII_GRID_SYNTHETIQUE);
       const gCenter = parseAsciiGrid(ASCII_GRID_CENTER);
       return gCorner.valeur(0, 0) === gCenter.valeur(0, 0) && gCorner.valeur(2, 3) === gCenter.valeur(2, 3);
+    },
+  },
+
+  // ── En-tête SANS NODATA_value : le cas RÉEL d'OpenTopography ──
+  // (ASCII_GRID_REEL_SANS_NODATA reproduit l'en-tête exact capturé par le
+  //  diagnostic réseau sur le poste d'un utilisateur, le 20/09/2026.)
+  {
+    libelle: 'ASCII Grid RÉEL d’OpenTopography (5 lignes d’en-tête, sans NODATA_value) : accepté',
+    attendu: true,
+    source: 'réponse réelle capturée par le diagnostic réseau le 20/09/2026 — NODATA_value est optionnel (spéc. Esri)',
+    executer: () => { parseAsciiGrid(ASCII_GRID_REEL_SANS_NODATA); return true; },
+  },
+  {
+    libelle: 'ASCII Grid sans NODATA_value : l’absence est SIGNALÉE (nodataDeclare=false), pas masquée',
+    attendu: false, source: '§5 — une valeur par défaut n’est jamais substituée en silence',
+    executer: () => parseAsciiGrid(ASCII_GRID_REEL_SANS_NODATA).nodataDeclare,
+  },
+  {
+    libelle: 'ASCII Grid sans NODATA_value : convention Esri -9999 appliquée',
+    attendu: -9999, source: 'spécification Esri — valeur par défaut de NODATA_value',
+    executer: () => parseAsciiGrid(ASCII_GRID_REEL_SANS_NODATA).nodata,
+  },
+  {
+    libelle: 'ASCII Grid AVEC NODATA_value : nodataDeclare=true (non-régression)',
+    attendu: true, source: 'le cas nominal ne doit pas changer de comportement',
+    executer: () => parseAsciiGrid(ASCII_GRID_SYNTHETIQUE).nodataDeclare,
+  },
+  {
+    libelle: 'ASCII Grid réel : en-tête lu correctement (ncols=4 malgré l’absence de NODATA_value)',
+    attendu: 4, source: 'réponse réelle du 20/09/2026',
+    executer: () => parseAsciiGrid(ASCII_GRID_REEL_SANS_NODATA).ncols,
+  },
+  {
+    libelle: 'ASCII Grid réel : première altitude lue = 453,7846 m (aucune ligne de données avalée par l’en-tête)',
+    attendu: 453.78460693359375,
+    source: 'première valeur de la réponse réelle capturée le 20/09/2026',
+    executer: () => parseAsciiGrid(ASCII_GRID_REEL_SANS_NODATA).valeur(0, 0),
+  },
+  {
+    libelle: 'ASCII Grid : cellsize manquant reste REFUSÉ (on n’a pas tout rendu optionnel)',
+    attendu: 'refus', source: 'sans cellsize, aucune géoréférence possible — refus justifié',
+    executer: () => {
+      try {
+        parseAsciiGrid('ncols 2\nnrows 2\nxllcorner -8\nyllcorner 31\n1 2\n3 4\n');
+        return 'aucun refus';
+      } catch { return 'refus'; }
     },
   },
 ];

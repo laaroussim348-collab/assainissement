@@ -18,12 +18,18 @@ import { IDS_FACTEURS, MATRICE_DEFAUT_AHP, evaluerCoherence, associerPoids, reno
 import { SENS_DEFAUT_PAR_FACTEUR, SEUILS_PENTE_POURCENT_DEFAUT, seuilsQuantiles } from '../calculations/reclassement.js';
 
 /**
- * Facteurs actifs par défaut : tous SAUF lithologieSol, dont la source
- * (SoilGrids) reste marquée `indisponibleTemporairement` (voir
- * services/sourcesDonnees.js et soilGridsClient.js) — l'activer par
- * défaut produirait systématiquement une grille sans donnée.
+ * Facteurs actifs par défaut : LES 8.
+ *
+ * lithologieSol en était exclu tant que SoilGrids était en pause côté
+ * ISRIC — l'activer aurait produit une grille systématiquement vide. Le
+ * diagnostic réseau du 20/09/2026, exécuté depuis le poste d'un
+ * utilisateur réel, montre le service rétabli (HTTP 200, réponse
+ * conforme) : le facteur redevient actif par défaut. Si la source
+ * retombait en panne, il serait désormais écarté automatiquement et
+ * l'utilisateur en serait informé (voir actifsDisponibles ci-dessous),
+ * au lieu de bloquer tout le calcul.
  */
-export const FACTEURS_ACTIFS_PAR_DEFAUT = IDS_FACTEURS.filter((id) => id !== 'lithologieSol');
+export const FACTEURS_ACTIFS_PAR_DEFAUT = IDS_FACTEURS;
 
 export function actifsEffectifs(etat) {
   return etat.facteurs?.actifs || FACTEURS_ACTIFS_PAR_DEFAUT;

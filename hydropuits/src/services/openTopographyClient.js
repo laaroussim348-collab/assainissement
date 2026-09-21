@@ -37,6 +37,15 @@
 
 const BASE_URL = 'https://portal.opentopography.org/API/globaldem';
 
+/**
+ * Valeur d'absence de donnée supposée quand l'en-tête n'en déclare
+ * AUCUNE. ORIGINE : convention Esri du format ASCII Grid, qui donne
+ * -9999 comme valeur par défaut de NODATA_value. Jamais substituée en
+ * silence : `parseAsciiGrid` renvoie `nodataDeclare: false` et
+ * l'interface l'affiche (§5).
+ */
+export const NODATA_DEFAUT_ESRI = -9999;
+
 /** Types de MNT proposés — identifiants EXACTS attendus par l'API. */
 export const TYPES_MNT = {
   'copernicus-30': { demtype: 'COP30', resolution_m: 30, libelleCle: 'otMntCopernicus30' },
@@ -139,12 +148,37 @@ export function parseAsciiGrid(texte) {
     ligneDepart = i;
     break;
   }
-  const CLES_REQUISES = ['ncols', 'nrows', 'cellsize', 'nodata_value'];
+  // NODATA_value est FACULTATIF — corrigé le 20/09/2026 sur PREUVE, pas
+  // sur hypothèse : le diagnostic réseau intégré, exécuté depuis le poste
+  // d'un utilisateur réel, a capturé la réponse brute d'OpenTopography
+  // pour une emprise au Maroc. Son en-tête compte 5 lignes et s'arrête à
+  // `cellsize`, les altitudes commençant immédiatement après :
+  //
+  //     ncols        36
+  //     nrows        36
+  //     xllcorner    -8.000138900000
+  //     yllcorner    31.630138900000
+  //     cellsize     0.000277777778
+  //     453.78460693359375 454.75750732421875 ...
+  //
+  // C'est conforme : la spécification Esri décrit NODATA_value comme
+  // optionnel (valeur par défaut -9999), et un générateur l'omet
+  // légitimement quand aucune cellule n'est vide — ce qui est le cas
+  // d'un MNT Copernicus en plein continent. L'exiger était donc bien LA
+  // cause de l'échec « nodata_value manquant » signalé par
+  // l'utilisateur, et non la variante *center corrigée plus haut (qui
+  // reste utile, mais ne concernait pas ce fichier : il utilise bien
+  // xllcorner).
+  const CLES_REQUISES = ['ncols', 'nrows', 'cellsize'];
   for (const cle of CLES_REQUISES) {
     if (!Number.isFinite(entete[cle])) {
       throw new Error(`parseAsciiGrid : en-tête ASCII Grid incomplet — '${cle}' manquant ou non numérique.`);
     }
   }
+  // Absence DÉCLARÉE, pas devinée : `nodataDeclare` remonte jusqu'à
+  // l'interface (§5 — une valeur par défaut n'est jamais substituée en
+  // silence, elle est dite).
+  const nodataDeclare = Number.isFinite(entete.nodata_value);
   if (!Number.isFinite(entete.xllcorner) && !Number.isFinite(entete.xllcenter)) {
     throw new Error("parseAsciiGrid : en-tête ASCII Grid incomplet — 'xllcorner'/'xllcenter' manquant ou non numérique.");
   }
@@ -155,7 +189,11 @@ export function parseAsciiGrid(texte) {
   const { ncols, nrows, cellsize } = entete;
   const xllcorner = Number.isFinite(entete.xllcorner) ? entete.xllcorner : entete.xllcenter - cellsize / 2;
   const yllcorner = Number.isFinite(entete.yllcorner) ? entete.yllcorner : entete.yllcenter - cellsize / 2;
-  const nodata = entete.nodata_value;
+  // Convention Esri en l'absence de NODATA_value : -9999. Sans danger
+  // pour un MNT terrestre — aucune altitude réelle n'approche cette
+  // valeur (le point émergé le plus bas du globe, la rive de la mer
+  // Morte, est à environ -430 m).
+  const nodata = nodataDeclare ? entete.nodata_value : NODATA_DEFAUT_ESRI;
   const valeurs = new Float64Array(ncols * nrows);
   let idx = 0;
   for (let i = ligneDepart; i < lignes.length && idx < valeurs.length; i++) {
@@ -171,7 +209,7 @@ export function parseAsciiGrid(texte) {
   }
 
   return {
-    ncols, nrows, xllcorner, yllcorner, cellsize, nodata, valeurs,
+    ncols, nrows, xllcorner, yllcorner, cellsize, nodata, nodataDeclare, valeurs,
     // (0,0) = coin NORD-OUEST (convention AAIGrid : les lignes vont du
     // nord vers le sud), lig croît vers le sud, col croît vers l'est.
     valeur(lig, col) {

@@ -215,7 +215,13 @@ async function executerOpenTopography(job, sommets, parametres) {
   const typeMnt = parametres.typeMnt || 'copernicus-30';
   const url = openTopographyClient.buildOpenTopographyUrl(bboxDe(sommets), cle, typeMnt);
   job.progres = 0.2;
-  const texte = await fetchText(url, job, 60000);
+  // 180 s, porté de 60 s le 20/09/2026 sur MESURE : le diagnostic réseau
+  // d'un utilisateur réel montre 11,3 s pour une emprise MINUSCULE
+  // (36×36 cellules, ~1 km). Le service découpe et rééchantillonne le
+  // MNT à la demande, donc le temps croît avec la surface : un vrai
+  // terrain peut légitimement demander bien plus d'une minute sans que
+  // rien soit en panne.
+  const texte = await fetchText(url, job, 180000);
   job.progres = 0.8;
   const grille = openTopographyClient.parseAsciiGrid(texte);
   job.progres = 1;
@@ -228,6 +234,9 @@ async function executerOpenTopography(job, sommets, parametres) {
     meta: {
       resolutionObtenue: `${openTopographyClient.TYPES_MNT[typeMnt].resolution_m} m`,
       typeMnt,
+      // §5 : si le fichier ne déclarait aucune valeur d'absence de
+      // donnée, on le dit plutôt que d'appliquer -9999 en silence.
+      nodataSuppose: grille.nodataDeclare ? null : openTopographyClient.NODATA_DEFAUT_ESRI,
     },
   };
 }
